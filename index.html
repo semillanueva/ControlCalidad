@@ -253,14 +253,14 @@ function renderPanels() {
   const o = cur.origen, v = cur.vivero;
   $('kvOrigen').innerHTML =
     '<b>LOT UID</b><span class="mono">' + (o ? esc(o.code) : '&mdash;') + '</span>' +
-    '<b>GID</b><span class="mono">' + (o ? esc(o.gid||'&mdash;') : '&mdash;') + '</span>' +
-    '<b>DESIGNATION</b><span>' + (o ? esc(o.desig||'&mdash;') : '&mdash;') + '</span>';
+    '<b>GID</b><span class="mono">' + (o && o.gid ? esc(o.gid) : '&mdash;') + '</span>' +
+    '<b>DESIGNATION</b><span>' + (o && o.desig ? esc(o.desig) : '&mdash;') + '</span>';
   $('kvVivero').innerHTML =
     '<b>OBS UNIT ID</b><span class="mono">' + (v ? esc(v.code) : '&mdash;') + '</span>' +
-    '<b>GID</b><span class="mono">' + (v ? esc(v.gid||'&mdash;') : '&mdash;') + '</span>' +
-    '<b>DESIGNATION</b><span>' + (v ? esc(v.desig||'&mdash;') : '&mdash;') + '</span>' +
-    '<b>ENTRY</b><span>' + (v ? esc(v.entry||'&mdash;') : '&mdash;') + '</span>' +
-    '<b>PLOT</b><span class="mono">' + (v ? esc(v.plot||'&mdash;') : '&mdash;') + '</span>';
+    '<b>GID</b><span class="mono">' + (v && v.gid ? esc(v.gid) : '&mdash;') + '</span>' +
+    '<b>DESIGNATION</b><span>' + (v && v.desig ? esc(v.desig) : '&mdash;') + '</span>' +
+    '<b>ENTRY</b><span>' + (v && v.entry ? esc(v.entry) : '&mdash;') + '</span>' +
+    '<b>PLOT</b><span class="mono">' + (v && v.plot ? esc(v.plot) : '&mdash;') + '</span>';
 }
 
 function evaluate() {
