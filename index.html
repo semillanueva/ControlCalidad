@@ -24,6 +24,9 @@
   .scan-box input { width:100%; padding:13px 14px; font-size:1.25rem; border:1px solid var(--line);
                     border-radius:8px; outline:none; font-family:ui-monospace,Consolas,monospace; }
   .scan-box .sub { font-size:.8rem; color:#555; margin-top:6px; min-height:1em; }
+  .scan-box.locked { border-color:#137333; background:#f3fbf6; }
+  .lock-tag { background:#137333; color:#fff; font-size:.7rem; padding:2px 8px; border-radius:10px; margin-left:6px; vertical-align:middle; }
+  .scan-box input:disabled { background:#eee; color:#999; }
   .verdict { margin:16px 0; border-radius:12px; padding:20px; text-align:center;
              font-size:1.6rem; font-weight:800; letter-spacing:.5px; border:3px solid var(--line);
              background:#fff; color:#888; }
@@ -72,19 +75,20 @@
 
   <h2>Escaneo</h2>
   <div class="scan-row">
-    <div class="scan-box">
-      <label>LOT UID &mdash; Material de ORIGEN</label>
+    <div class="scan-box" id="boxOrigen">
+      <label>LOT UID &mdash; Material de ORIGEN <span id="lockTag" class="lock-tag" style="display:none">FIJADO</span></label>
       <input type="text" id="scanOrigen" placeholder="Escanee el LOT UID del origen" autocomplete="off" autofocus>
       <div class="sub" id="subOrigen"></div>
+      <button class="act" id="btnLiberar" style="display:none; margin-top:8px;">Liberar origen / escanear otro</button>
     </div>
     <div class="scan-box">
       <label>OBS UNIT ID &mdash; NUEVO VIVERO</label>
-      <input type="text" id="scanVivero" placeholder="Escanee el OBS UNIT ID del vivero" autocomplete="off">
+      <input type="text" id="scanVivero" placeholder="Primero fije un origen" autocomplete="off" disabled>
       <div class="sub" id="subVivero"></div>
     </div>
   </div>
 
-  <div class="verdict" id="verdict">Escanee ambos códigos para verificar</div>
+  <div class="verdict" id="verdict">Escanee el LOT UID de origen para comenzar</div>
 
   <div class="panel">
     <div>
@@ -148,7 +152,7 @@ const key  = v => norm(v).toUpperCase();
 // ---- Estado ----
 let origenIndex = new Map();   // LOT UID (upper) -> {lot, gid, desig}
 let viveroIndex = new Map();   // OBS_UNIT_ID (upper) -> {obs, gid, desig, entry, plot}
-let cur = { origen:null, vivero:null };
+let cur = { origen:null, vivero:null, origenCount:0 };
 let history = [];
 
 // ---- Utilidades de columnas (tolerante a nombres) ----
@@ -218,33 +222,75 @@ $('fileVivero').addEventListener('change', e => {
 });
 
 // ---- Escaneo ----
+function fijarOrigen(hit, code) {
+  cur.origen = { code, ...hit };
+  cur.origenCount = 0;
+  $('boxOrigen').classList.add('locked');
+  $('lockTag').style.display = 'inline-block';
+  $('btnLiberar').style.display = 'inline-block';
+  $('scanOrigen').value = code;
+  $('scanOrigen').disabled = true;
+  $('subOrigen').innerHTML = 'Origen fijado &middot; GID ' + esc(hit.gid) + ' &middot; ' + esc(hit.desig);
+  $('scanVivero').disabled = false;
+  $('scanVivero').placeholder = 'Escanee OBS UNIT ID (puede escanear varios)';
+  $('verdict').className = 'verdict';
+  $('verdict').innerHTML = 'Origen fijado. Escanee los OBS UNIT ID del vivero.';
+  renderPanels();
+  $('scanVivero').focus();
+}
+
+function liberarOrigen() {
+  cur.origen = null;
+  cur.vivero = null;
+  cur.origenCount = 0;
+  $('boxOrigen').classList.remove('locked');
+  $('lockTag').style.display = 'none';
+  $('btnLiberar').style.display = 'none';
+  $('scanOrigen').disabled = false;
+  $('scanOrigen').value = '';
+  $('subOrigen').textContent = '';
+  $('scanVivero').disabled = true;
+  $('scanVivero').value = '';
+  $('scanVivero').placeholder = 'Primero fije un origen';
+  $('subVivero').textContent = '';
+  $('verdict').className = 'verdict';
+  $('verdict').textContent = 'Escanee el LOT UID de origen para comenzar';
+  renderPanels();
+  $('scanOrigen').focus();
+}
+
+$('btnLiberar').addEventListener('click', liberarOrigen);
+
 $('scanOrigen').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   e.preventDefault();
   const code = norm($('scanOrigen').value);
   if (!origenIndex.size) { $('subOrigen').innerHTML = '<span class="hl-bad">Cargue el archivo de origen.</span>'; return; }
+  if (!code) return;
   const hit = origenIndex.get(code.toUpperCase());
-  cur.origen = hit ? {code, ...hit} : {code, gid:'', desig:'', notFound:true};
-  if (hit) $('subOrigen').innerHTML = 'GID ' + hit.gid + ' &middot; ' + hit.desig;
-  else     $('subOrigen').innerHTML = '<span class="hl-bad">No encontrado en origen.</span>';
-  renderPanels();
-  $('scanOrigen').value = '';
-  $('scanVivero').focus();   // pasa al segundo escaneo
+  if (!hit) {
+    $('subOrigen').innerHTML = '<span class="hl-bad">No encontrado en origen.</span>';
+    cur.origen = null;
+    return;
+  }
+  fijarOrigen(hit, code);
 });
 
 $('scanVivero').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   e.preventDefault();
   const code = norm($('scanVivero').value);
+  if (!cur.origen) { $('subVivero').innerHTML = '<span class="hl-bad">Fije primero un origen.</span>'; return; }
   if (!viveroIndex.size) { $('subVivero').innerHTML = '<span class="hl-bad">Cargue el libro de campo.</span>'; return; }
+  if (!code) return;
   const hit = viveroIndex.get(code.toUpperCase());
   cur.vivero = hit ? {code, ...hit} : {code, gid:'', desig:'', entry:'', plot:'', notFound:true};
-  if (hit) $('subVivero').innerHTML = 'GID ' + hit.gid + ' &middot; ' + hit.desig;
+  if (hit) $('subVivero').innerHTML = 'GID ' + esc(hit.gid) + ' &middot; ' + esc(hit.desig);
   else     $('subVivero').innerHTML = '<span class="hl-bad">No encontrado en vivero.</span>';
   renderPanels();
-  evaluate();               // al tener el segundo, evalúa
+  evaluate();
   $('scanVivero').value = '';
-  $('scanOrigen').focus();  // listo para el siguiente par
+  $('scanVivero').focus();   // se queda en OBS para seguir escaneando contra el mismo origen
 });
 
 function esc(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
@@ -268,23 +314,26 @@ function evaluate() {
   if (!o || !v) return;
   const ve = $('verdict');
   if (o.notFound || v.notFound) {
+    cur.origenCount = (cur.origenCount || 0) + 1;
     ve.className = 'verdict false';
-    ve.innerHTML = 'FALSO <small>Uno de los códigos no se encontró en su archivo</small>';
+    ve.innerHTML = 'FALSO <small>El OBS UNIT ID no se encontró en el libro de campo &middot; OBS verificados con este origen: ' + cur.origenCount + '</small>';
     pushHistory('FALSO');
     return;
   }
+  cur.origenCount = (cur.origenCount || 0) + 1;
   const gidOk   = key(o.gid)   === key(v.gid)   && o.gid   !== '';
   const desigOk = key(o.desig) === key(v.desig) && o.desig !== '';
   const ok = gidOk && desigOk;
+  const contador = ' &middot; OBS verificados con este origen: ' + cur.origenCount;
   ve.className = 'verdict ' + (ok ? 'true' : 'false');
   if (ok) {
     ve.innerHTML = 'VERDADERO <small>GID y DESIGNATION coinciden &middot; ENTRY ' +
-                   esc(v.entry||'-') + ' &middot; PLOT ' + esc(v.plot||'-') + '</small>';
+                   esc(v.entry||'-') + ' &middot; PLOT ' + esc(v.plot||'-') + contador + '</small>';
   } else {
     const dif = [];
     if (!gidOk)   dif.push('GID');
     if (!desigOk) dif.push('DESIGNATION');
-    ve.innerHTML = 'FALSO <small>No coincide: ' + dif.join(' y ') + '</small>';
+    ve.innerHTML = 'FALSO <small>No coincide: ' + dif.join(' y ') + contador + '</small>';
   }
   pushHistory(ok ? 'VERDADERO' : 'FALSO');
 }
