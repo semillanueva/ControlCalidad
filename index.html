@@ -6,7 +6,8 @@
 <title>Control de Calidad - Armado de Viveros y Ensayos (conectado a BMS)</title>
 <style>
   :root { --bg:#f4f6f8; --card:#fff; --accent:#1f6f43; --line:#dfe3e8;
-          --ok:#137333; --okbg:#e6f4ea; --bad:#b00020; --badbg:#fce8e6; --amber:#9a6700; }
+          --ok:#137333; --okbg:#e6f4ea; --bad:#b00020; --badbg:#fce8e6; --amber:#9a6700;
+          --amberbg:#fff4e0; --gray:#5f6368; --graybg:#eef0f2; }
   * { box-sizing:border-box; }
   body { font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); margin:0; color:#1a1a1a; }
   .container { max-width:1100px; margin:0 auto; padding:18px; }
@@ -89,6 +90,39 @@
               cursor:pointer; user-select:none; background:#fff; color:#444; }
   .prog-tag.on { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
   .prog-tag.unknown { opacity:.55; }
+
+  /* ===== Pestañas (Escaneo / Validación de listado) ===== */
+  .tab-bar { display:flex; gap:8px; margin:16px 0 10px; border-bottom:2px solid var(--line); }
+  .tab-btn { background:none; border:none; border-bottom:3px solid transparent; padding:9px 16px;
+             font-size:.92rem; font-weight:700; color:#666; cursor:pointer; margin-bottom:-2px; }
+  .tab-btn:hover { color:var(--accent); }
+  .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+  /* ===== Validación de listado crudo ===== */
+  .upload-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .map-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:12px; }
+  .map-grid label { font-size:.78rem; font-weight:600; color:#444; display:block; margin-bottom:3px; }
+  .map-grid select { width:100%; padding:7px 8px; border:1px solid var(--line); border-radius:6px; font-size:.85rem; background:#fff; }
+
+  .summary { display:flex; gap:12px; flex-wrap:wrap; margin:10px 0; }
+  .summary .box { flex:1; min-width:120px; border-radius:8px; padding:10px 12px; text-align:center; }
+  .summary .box .n { font-size:1.4rem; font-weight:700; display:block; }
+  .summary .box .label { font-size:.72rem; text-transform:uppercase; letter-spacing:.03em; }
+  .summary .box.total { background:#e8eaed; color:#3c4043; }
+  .summary .box.ok { background:var(--okbg); color:var(--ok); }
+  .summary .box.warn { background:var(--amberbg); color:var(--amber); }
+  .summary .box.bad { background:var(--badbg); color:var(--bad); }
+
+  .table-wrap { max-height:520px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+  tr.row-ok td { background:var(--okbg); }
+  tr.row-warn td { background:var(--amberbg); }
+  tr.row-bad td { background:var(--badbg); }
+  tr.row-gray td { background:var(--graybg); color:#666; }
+  .tag { display:inline-block; font-size:.72rem; font-weight:700; padding:2px 7px; border-radius:10px; color:#fff; }
+  .tag.ok { background:var(--ok); }
+  .tag.warn { background:var(--amber); }
+  .tag.bad { background:var(--bad); }
+  .tag.gray { background:var(--gray); }
 </style>
 </head>
 <body>
@@ -113,14 +147,24 @@
 
   <div class="loaders">
     <div>
-      <label>1. Catálogo de LOTES (Origen) &mdash; desde BMS</label>
+      <label>Catálogo de LOTES (Origen) &mdash; desde BMS</label>
       <div class="toolbar">
         <button class="btn-load" id="btnCargarLotes" onclick="cargarLotesBMS()" disabled>Cargar lotes desde BMS</button>
       </div>
       <div class="file-status" id="statusLotes">Conéctate a BMS primero.</div>
     </div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tabBtnEscaneo" onclick="showTab('escaneo')">Escaneo Lote &harr; Vivero</button>
+    <button class="tab-btn" id="tabBtnValidacion" onclick="showTab('validacion')">Validar Listado Crudo</button>
+    <button class="tab-btn" id="tabBtnSobres" onclick="showTab('sobres')">Armado &mdash; Escaneo de Sobres</button>
+  </div>
+
+  <div id="tabEscaneo">
+  <div class="loaders">
     <div>
-      <label>2. Vivero (Study) &mdash; OBS_UNIT_ID desde BMS</label>
+      <label>Vivero (Study) &mdash; OBS_UNIT_ID desde BMS</label>
       <div class="sub-field">
         <input type="text" id="studyQuery" placeholder="Nombre del vivero (ej. 01 SLFAFCIM_2026B) o studyDbId numérico" disabled>
       </div>
@@ -179,8 +223,121 @@
     </tr></thead>
     <tbody></tbody>
   </table>
+  </div> <!-- /tabEscaneo -->
+
+  <div id="tabValidacion" style="display:none">
+    <p style="font-size:.85rem;color:#666;margin:0 0 10px">Sube el listado crudo (con GID y/o Preferred Name) y valida contra el catálogo de lotes ya cargado arriba &mdash; no vuelve a consultar BMS, usa el mismo catálogo en memoria.</p>
+
+    <div class="conn-card">
+      <div class="upload-row">
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" disabled>
+        <span class="file-status" id="fileStatus">Carga el catálogo de lotes primero.</span>
+      </div>
+      <div id="sheetPickerWrap" style="display:none; margin-top:10px;">
+        <label style="font-size:.78rem; font-weight:600;">Hoja:</label>
+        <select id="sheetPicker" style="padding:6px; border-radius:6px; border:1px solid var(--line);"></select>
+      </div>
+      <div class="map-grid" id="mapGrid" style="display:none;">
+        <div><label>Columna GID</label><select id="colGid"></select></div>
+        <div><label>Columna Nombre / Preferred Name</label><select id="colName"></select></div>
+        <div><label>Columna Orden (opcional)</label><select id="colOrden"></select></div>
+        <div><label>Columna Hembra/Macho (opcional)</label><select id="colRol"></select></div>
+      </div>
+      <div class="toolbar">
+        <button class="btn-load" id="btnProcesar" disabled>Validar contra BMS</button>
+        <span class="file-status" id="procesarStatus"></span>
+      </div>
+    </div>
+
+    <h2>Resultado de la validación</h2>
+    <div class="summary" id="summary" style="display:none;">
+      <div class="box total"><span class="n" id="sTotal">0</span><span class="label">Filas</span></div>
+      <div class="box ok"><span class="n" id="sOk">0</span><span class="label">OK</span></div>
+      <div class="box warn"><span class="n" id="sWarn">0</span><span class="label">Advertencias</span></div>
+      <div class="box bad"><span class="n" id="sBad">0</span><span class="label">No encontrados</span></div>
+    </div>
+    <div class="toolbar">
+      <button class="act" id="btnExportValidacion" disabled>Exportar resultado (CSV)</button>
+    </div>
+    <div class="table-wrap">
+      <table id="resultTable">
+        <thead>
+          <tr>
+            <th>Orden</th><th>Rol</th><th>GID (archivo)</th><th>Nombre (archivo)</th>
+            <th>GID en BMS</th><th>Designation en BMS</th><th>Disponible</th><th>Estado</th><th>Detalle</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div> <!-- /tabValidacion -->
+
+  <div id="tabSobres" style="display:none">
+    <p style="font-size:.85rem;color:#666;margin:0 0 10px">Usa el listado ya validado en la pestaña "Validar Listado Crudo". Persona B escanea los sobres desde su propio teléfono (app aparte, sin sesión de BMS) y aquí sincronizas para comparar contra el listado.</p>
+
+    <div class="toolbar">
+      <button class="btn-load" id="btnPrepararSobres" onclick="prepararMaterialesRequeridos()">Usar listado validado</button>
+      <span class="file-status" id="statusSobres">Primero valida un listado en la pestaña "Validar Listado Crudo".</span>
+    </div>
+
+    <div class="summary" id="summarySobres" style="display:none;">
+      <div class="box total"><span class="n" id="sTotalSobres">0</span><span class="label">Total</span></div>
+      <div class="box ok"><span class="n" id="sEscaneadosSobres">0</span><span class="label">Escaneados</span></div>
+      <div class="box bad"><span class="n" id="sFaltanSobres">0</span><span class="label">Faltan</span></div>
+    </div>
+
+    <div class="conn-card" id="cardSync">
+      <label style="font-weight:700;color:var(--accent);display:block;margin-bottom:8px">Escaneos de Persona B (remotos)</label>
+      <div class="conn-grid" style="grid-template-columns:1fr;">
+        <div><label>URL del sistema (Apps Script)</label><input type="text" id="webAppUrlSync" placeholder="https://script.google.com/macros/s/XXXXX/exec"></div>
+      </div>
+      <div class="toolbar">
+        <button class="btn-load" onclick="guardarUrlSync()">Guardar URL</button>
+        <button class="btn-load" id="btnSincronizar" onclick="sincronizarEscaneosRemotos()">Sincronizar escaneos</button>
+      </div>
+      <div class="file-status" id="statusSync"></div>
+    </div>
+
+    <div class="conn-card" id="cardEscaneoSobre" style="display:none;">
+      <label style="font-weight:700;color:var(--accent);display:block;margin-bottom:8px">Escanear sobre (opcional, si Persona A también escanea desde aquí)</label>
+      <div class="toolbar">
+        <button class="btn-load" id="btnIniciarCamara" onclick="iniciarEscaneoSobre()">Escanear sobre (cámara)</button>
+        <button class="btn-secondary" id="btnDetenerCamara" onclick="detenerEscaneoSobre(true)" style="display:none">Detener cámara</button>
+      </div>
+      <div id="readerSobre" style="max-width:340px;margin-top:10px;"></div>
+      <div class="file-status" id="statusEscaneoSobre" style="margin-top:8px;"></div>
+
+      <div id="fotoSobreWrap" style="display:none; margin-top:12px;">
+        <button class="btn-load" id="btnTomarFoto" onclick="tomarFotoSobre()">Tomar foto del sobre</button>
+        <div id="videoFotoWrap" style="display:none; margin-top:8px;">
+          <video id="videoFoto" autoplay playsinline style="max-width:320px;border-radius:8px;display:block;"></video>
+          <button class="btn-load" onclick="capturarFoto()" style="margin-top:8px;">Capturar</button>
+        </div>
+        <canvas id="canvasFoto" style="display:none;"></canvas>
+      </div>
+    </div>
+
+    <h2>Faltan por escanear</h2>
+    <div id="listaFaltantes" style="font-size:.85rem;"></div>
+
+    <h2>Historial de sobres escaneados</h2>
+    <div class="toolbar">
+      <button class="act" id="btnExportSobres" onclick="exportarHistorialSobres()">Exportar historial (CSV)</button>
+      <button class="act" onclick="limpiarHistorialSobres()">Limpiar historial</button>
+    </div>
+    <div class="table-wrap">
+      <table id="histSobresTable">
+        <thead><tr>
+          <th>Hora</th><th>GID</th><th>Nombre BMS</th><th>OBS_UNIT_ID</th><th>Disponible</th><th>Resultado</th><th>Quién</th><th>Foto</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div> <!-- /tabSobres -->
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
 /* =========================================================================
    CONEXION A BMS
@@ -436,6 +593,12 @@ function renderProgTags() {
    ========================================================================= */
 
 let lotIndex = new Map(); // LOT UID (upper) -> {lotUID, gid, desig}
+let gidIndex = new Map(); // GID (string) -> {gid, desigOriginal, desigTight, lotCount} -- usado por la pestaña "Validar Listado Crudo"
+let uniqueGermplasmList = []; // [{gid, desigOriginal, desigTight}] deduplicado por GID, para búsqueda por nombre
+
+function stripAccents(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+function normLoose(s) { return stripAccents(s).toUpperCase().replace(/\s+/g, ' ').trim(); }
+function normTight(s) { return normLoose(s).replace(/[^A-Z0-9]/g, ''); }
 
 function extractList(d) {
   if (Array.isArray(d)) return d;
@@ -464,6 +627,7 @@ async function cargarLotesBMS() {
   btn.disabled = true;
   statusEl.innerHTML = '<span class="spinner-inline"></span> Consultando lotes en BMS...';
   lotIndex = new Map();
+  gidIndex = new Map();
 
   try {
     // Paso 1: crear la búsqueda (POST con body vacío = todos los lotes)
@@ -516,9 +680,14 @@ async function cargarLotesBMS() {
     if (lotIndex.size === 0) {
       statusEl.innerHTML = '<span class="hl-bad">No se cargó ningún lote. Revisa el diagnóstico.</span>';
     } else {
-      statusEl.innerHTML = '<span class="hl-ok">Lotes cargados:</span> ' + lotIndex.size;
+      uniqueGermplasmList = Array.from(gidIndex.values());
+      statusEl.innerHTML = '<span class="hl-ok">Lotes cargados:</span> ' + lotIndex.size +
+        ' &nbsp;|&nbsp; <span class="hl-ok">GID únicos:</span> ' + gidIndex.size;
       document.getElementById('scanOrigen').disabled = false;
       document.getElementById('scanOrigen').placeholder = 'Escanee el LOT UID del origen';
+      document.getElementById('fileInput').disabled = false;
+      document.getElementById('fileStatus').textContent = 'Listo. Sube el archivo Excel del listado crudo.';
+      document.getElementById('btnProcesar').disabled = (sheetRows.length === 0);
     }
   } catch (e) {
     statusEl.innerHTML = '<span class="hl-bad">Error: ' + e.message + '</span>';
@@ -529,10 +698,23 @@ async function cargarLotesBMS() {
 
 function indexarLote(rec) {
   const lotUID = rec.lotUUID || rec.lotUID || rec.stockId || rec.lotId || '';
-  if (!lotUID) return;
-  const gid = String(rec.gid || rec.GID || '');
+  const gid = String(rec.gid || rec.GID || '').trim();
   const desig = rec.designation || rec.germplasmName || '';
-  lotIndex.set(String(lotUID).toUpperCase(), { lotUID: String(lotUID), gid, desig });
+  if (lotUID) lotIndex.set(String(lotUID).toUpperCase(), { lotUID: String(lotUID), gid, desig });
+  if (gid) {
+    let e = gidIndex.get(gid);
+    if (!e) {
+      e = { gid, desigOriginal: desig, desigTight: normTight(desig), lotCount: 0,
+            totalAvailable: 0, anyOpen: false };
+      gidIndex.set(gid, e);
+    }
+    e.lotCount++;
+    // Disponibilidad: sumamos el saldo disponible de todos los lotes de este
+    // GID y marcamos si al menos uno está abierto (status !== CLOSED).
+    const avail = Number(rec.availableBalance);
+    if (!isNaN(avail)) e.totalAvailable += avail;
+    if (rec.status && String(rec.status).toUpperCase() !== 'CLOSED') e.anyOpen = true;
+  }
 }
 
 /* =========================================================================
@@ -781,7 +963,7 @@ function indexarObsUnit(rec, envName) {
 const $ = id => document.getElementById(id);
 const norm = v => String(v ?? '').trim();
 const key  = v => norm(v).toUpperCase();
-function esc(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 let cur = { origen:null, vivero:null, origenCount:0 };
 let history = [];
@@ -959,6 +1141,649 @@ $('btnExport').addEventListener('click', () => {
   a.download = 'control_calidad_' + new Date().toISOString().slice(0,10) + '.csv';
   a.click();
 });
+
+/* =========================================================================
+   PESTAÑAS
+   ========================================================================= */
+function showTab(tab) {
+  $('tabEscaneo').style.display = (tab === 'escaneo') ? '' : 'none';
+  $('tabValidacion').style.display = (tab === 'validacion') ? '' : 'none';
+  $('tabSobres').style.display = (tab === 'sobres') ? '' : 'none';
+  $('tabBtnEscaneo').classList.toggle('active', tab === 'escaneo');
+  $('tabBtnValidacion').classList.toggle('active', tab === 'validacion');
+  $('tabBtnSobres').classList.toggle('active', tab === 'sobres');
+}
+
+/* =========================================================================
+   VALIDACIÓN DE LISTADO CRUDO
+   Usa el mismo gidIndex / uniqueGermplasmList que ya llenó cargarLotesBMS()
+   arriba -- no vuelve a llamar a BMS, solo compara localmente.
+   ========================================================================= */
+let workbook = null;
+let sheetRows = [];   // filas crudas de la hoja seleccionada (array de arrays)
+let headers = [];
+
+const HEADER_ALIASES = {
+  gid: ['gid'],
+  name: ['preferred name', 'preferred_name', 'designation', 'nombre', 'name'],
+  orden: ['orden', 'no.', 'no', 'item', '#'],
+  rol: ['hembra/macho', 'hembra', 'macho', 'sexo', 'role', 'parent type', 'tipo']
+};
+
+function detectCol(hdrs, aliases) {
+  const normH = hdrs.map(h => normLoose(h));
+  for (const alias of aliases) {
+    const idx = normH.findIndex(h => h === normLoose(alias));
+    if (idx >= 0) return idx;
+  }
+  for (const alias of aliases) {
+    const idx = normH.findIndex(h => h.includes(normLoose(alias)));
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
+function fillSelect(selectId, hdrs, guessIdx, optional) {
+  const sel = $(selectId);
+  sel.innerHTML = '';
+  if (optional) {
+    const opt = document.createElement('option');
+    opt.value = '-1'; opt.textContent = '(ninguna)';
+    sel.appendChild(opt);
+  }
+  hdrs.forEach((h, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = h || '(columna ' + (i+1) + ')';
+    sel.appendChild(opt);
+  });
+  sel.value = String(guessIdx >= 0 ? guessIdx : (optional ? -1 : 0));
+}
+
+function loadSheet(idx) {
+  const sheetName = workbook.SheetNames[idx];
+  const ws = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+  headers = (rows[0] || []).map(h => String(h || '').trim());
+  sheetRows = rows.slice(1).filter(r => r.some(c => String(c).trim() !== ''));
+
+  $('mapGrid').style.display = 'grid';
+  fillSelect('colGid', headers, detectCol(headers, HEADER_ALIASES.gid), false);
+  fillSelect('colName', headers, detectCol(headers, HEADER_ALIASES.name), false);
+  fillSelect('colOrden', headers, detectCol(headers, HEADER_ALIASES.orden), true);
+  fillSelect('colRol', headers, detectCol(headers, HEADER_ALIASES.rol), true);
+
+  $('fileStatus').textContent = sheetRows.length + ' filas detectadas en la hoja "' + sheetName + '". Revisa el mapeo de columnas y presiona Validar.';
+  $('btnProcesar').disabled = (gidIndex.size === 0 || sheetRows.length === 0);
+}
+
+$('fileInput').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if (!file) return;
+  $('fileStatus').textContent = 'Leyendo archivo...';
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      workbook = XLSX.read(e.target.result, { type: 'array' });
+      const picker = $('sheetPicker');
+      picker.innerHTML = '';
+      workbook.SheetNames.forEach((name, i) => {
+        const opt = document.createElement('option');
+        opt.value = String(i); opt.textContent = name;
+        picker.appendChild(opt);
+      });
+      $('sheetPickerWrap').style.display = workbook.SheetNames.length > 1 ? 'block' : 'none';
+      loadSheet(0);
+    } catch (err) {
+      $('fileStatus').textContent = 'Error leyendo el archivo: ' + err.message;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+$('sheetPicker').addEventListener('change', (ev) => loadSheet(parseInt(ev.target.value, 10)));
+
+function levenshtein(a, b) {
+  const al = a.length, bl = b.length;
+  if (al === 0) return bl;
+  if (bl === 0) return al;
+  let prev = new Array(bl + 1), curr = new Array(bl + 1);
+  for (let j = 0; j <= bl; j++) prev[j] = j;
+  for (let i = 1; i <= al; i++) {
+    curr[0] = i;
+    const ca = a.charCodeAt(i - 1);
+    for (let j = 1; j <= bl; j++) {
+      const cost = (ca === b.charCodeAt(j - 1)) ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[bl];
+}
+
+function buscarPorNombre(nameTight) {
+  const candidatos = [];
+  for (const g of uniqueGermplasmList) {
+    if (Math.abs(g.desigTight.length - nameTight.length) > 4) continue;
+    const dist = levenshtein(nameTight, g.desigTight);
+    if (dist <= 4) candidatos.push({ gid: g.gid, desig: g.desigOriginal, dist });
+  }
+  candidatos.sort((a, b) => a.dist - b.dist);
+  return candidatos.slice(0, 3);
+}
+
+function disponibilidadTexto(entry) {
+  if (!entry) return '';
+  const cant = Math.round(entry.totalAvailable * 100) / 100;
+  if (cant > 0) return cant + ' (en ' + entry.lotCount + (entry.lotCount === 1 ? ' lote' : ' lotes') + ')';
+  if (entry.anyOpen) return '0 (lote abierto, sin saldo)';
+  return '0 (sin existencia / cerrado)';
+}
+
+// Si el nombre coincide perfecto (estado 'ok') pero el GID no tiene semilla
+// disponible, esto igual merece una advertencia visible -- no es un error
+// de datos, pero sí algo que hay que revisar antes de ir al campo.
+function conAlertaStock(estado, entry, detalle) {
+  if (estado === 'ok' && entry && entry.totalAvailable <= 0) {
+    return { estado: 'ok_sin_stock', detalle: detalle + ' · SIN EXISTENCIA DISPONIBLE' };
+  }
+  return { estado, detalle };
+}
+
+/* =========================================================================
+   NOMBRES ALTERNOS POR GID (CRSNM / LNAME / etc.)
+   Endpoint confirmado: GET /crops/{crop}/germplasm/{gid}?programUUID=X
+   Solo se consulta para los GID que realmente aparecen en el archivo subido
+   (no para los ~50,000 del catálogo completo -- sería lento e innecesario).
+   Se prueba primero sin programUUID; si falla, se reintenta con cada
+   programUUID detectado (ver cargarProgramasBMS), igual que el resto de
+   la herramienta.
+   ========================================================================= */
+let germplasmNamesCache = new Map(); // gid (string) -> {CRSNM:'...', LNAME:'...', ...} o null si no se pudo obtener
+
+function extraerNombresPorTipo(d) {
+  const out = {};
+  if (d && Array.isArray(d.names)) {
+    d.names.forEach(n => {
+      const code = String(n.nameTypeCode || '').toUpperCase();
+      if (code && code !== 'PED' && n.name && !out[code]) out[code] = n.name;
+    });
+  }
+  return out;
+}
+
+async function obtenerNombresGermplasma(gid) {
+  if (germplasmNamesCache.has(gid)) return germplasmNamesCache.get(gid);
+  const { crop } = cfg();
+  const programUUIDs = [null].concat(programasDisponibles.map(p => p.programUUID).filter(Boolean));
+  let nombres = {};
+  for (const puuid of programUUIDs) {
+    const qs = puuid ? ('?programUUID=' + encodeURIComponent(puuid)) : '';
+    try {
+      const r = await nativeFetch('/bmsapi/crops/' + crop + '/germplasm/' + encodeURIComponent(gid), { qs }, 'debugValidacion');
+      if (r.ok) {
+        const d = await r.json();
+        nombres = extraerNombresPorTipo(d);
+        if (Object.keys(nombres).length) break;
+      }
+    } catch (e) {
+      dbg('debugValidacion', 'GID ' + gid + ' (programUUID=' + puuid + ') -> error: ' + e.message);
+    }
+  }
+  germplasmNamesCache.set(gid, nombres);
+  return nombres;
+}
+
+function evaluarFila(gidRaw, nameRaw) {
+  const gid = String(gidRaw == null ? '' : gidRaw).trim().replace(/\.0$/, '');
+  const name = String(nameRaw == null ? '' : nameRaw).trim();
+
+  if (!gid && !name) {
+    return { estado: 'fila_invalida', gidBMS: '', desigBMS: '', disponible: '', detalle: 'Fila sin GID ni Nombre' };
+  }
+
+  if (gid) {
+    const entry = gidIndex.get(gid);
+    if (!entry) {
+      return { estado: 'gid_no_encontrado', gidBMS: '', desigBMS: '', disponible: '', detalle: 'GID ' + gid + ' no existe en el catálogo de lotes cargado' };
+    }
+    if (!name) {
+      const av = conAlertaStock('ok', entry, 'GID encontrado (sin nombre en el archivo para comparar)');
+      return { estado: av.estado, gidBMS: gid, desigBMS: entry.desigOriginal, disponible: disponibilidadTexto(entry), detalle: av.detalle };
+    }
+
+    // Candidatos de nombre para este GID: el de lots/search (normalmente
+    // LNAME) + los que trajo /germplasm/{gid} (CRSNM, LNAME, etc.),
+    // deduplicados por valor.
+    const extra = germplasmNamesCache.get(gid) || {};
+    const candidatos = [{ tipo: 'DESIGNATION', valor: entry.desigOriginal }];
+    Object.keys(extra).forEach(tipo => candidatos.push({ tipo, valor: extra[tipo] }));
+    const vistos = new Set();
+    const candidatosUnicos = candidatos.filter(c => {
+      const t = normTight(c.valor);
+      if (!t || vistos.has(t)) return false;
+      vistos.add(t);
+      return true;
+    });
+
+    const nTight = normTight(name);
+    const exacto = candidatosUnicos.find(c => normTight(c.valor) === nTight);
+    if (exacto) {
+      const av = conAlertaStock('ok', entry, 'Coincidencia exacta con ' + exacto.tipo + ' ("' + exacto.valor + '")');
+      return { estado: av.estado, gidBMS: gid, desigBMS: exacto.valor, disponible: disponibilidadTexto(entry), detalle: av.detalle };
+    }
+
+    let mejor = null;
+    candidatosUnicos.forEach(c => {
+      const d = levenshtein(nTight, normTight(c.valor));
+      if (!mejor || d < mejor.dist) mejor = { tipo: c.tipo, valor: c.valor, dist: d };
+    });
+    if (mejor && mejor.dist <= 2) {
+      return { estado: 'ok_typo', gidBMS: gid, desigBMS: mejor.valor, disponible: disponibilidadTexto(entry), detalle: 'Posible error de tipeo contra ' + mejor.tipo + ' (distancia ' + mejor.dist + '): archivo dice "' + name + '", BMS dice "' + mejor.valor + '"' };
+    }
+    const listaNombres = candidatosUnicos.map(c => c.tipo + '="' + c.valor + '"').join(', ');
+    return { estado: 'nombre_no_coincide', gidBMS: gid, desigBMS: entry.desigOriginal, disponible: disponibilidadTexto(entry), detalle: 'El nombre no coincide con ninguno de los nombres en BMS (' + listaNombres + '): archivo dice "' + name + '"' };
+  }
+
+  const nTight = normTight(name);
+  const cands = buscarPorNombre(nTight);
+  if (!cands.length) {
+    return { estado: 'nombre_no_encontrado', gidBMS: '', desigBMS: '', disponible: '', detalle: 'Sin GID en el archivo; no se halló ninguna coincidencia cercana por nombre en el catálogo' };
+  }
+  if (cands[0].dist === 0) {
+    return { estado: 'revisar_sin_gid', gidBMS: cands[0].gid, desigBMS: cands[0].desig, disponible: disponibilidadTexto(gidIndex.get(cands[0].gid)), detalle: 'Sin GID en el archivo, pero el nombre coincide exacto con GID ' + cands[0].gid + ' en BMS' };
+  }
+  const lista = cands.map(c => 'GID ' + c.gid + ' ("' + c.desig + '", distancia ' + c.dist + ')').join('; ');
+  return { estado: 'revisar_sin_gid_aprox', gidBMS: cands[0].gid, desigBMS: cands[0].desig, disponible: disponibilidadTexto(gidIndex.get(cands[0].gid)), detalle: 'Sin GID en el archivo; candidatos cercanos: ' + lista };
+}
+
+const ESTADO_INFO = {
+  ok:                     { tag: 'ok',   texto: 'OK' },
+  ok_sin_stock:           { tag: 'warn', texto: 'OK, sin existencia' },
+  ok_typo:                { tag: 'warn', texto: 'Posible tipeo' },
+  nombre_no_coincide:     { tag: 'bad',  texto: 'Nombre no coincide' },
+  gid_no_encontrado:      { tag: 'bad',  texto: 'GID no encontrado' },
+  revisar_sin_gid:        { tag: 'warn', texto: 'Falta GID (match exacto)' },
+  revisar_sin_gid_aprox:  { tag: 'warn', texto: 'Falta GID (revisar candidatos)' },
+  nombre_no_encontrado:   { tag: 'bad',  texto: 'No encontrado' },
+  fila_invalida:          { tag: 'gray', texto: 'Fila inválida' }
+};
+
+let ultimosResultados = [];
+
+async function procesarListado() {
+  const idxGid = parseInt($('colGid').value, 10);
+  const idxName = parseInt($('colName').value, 10);
+  const idxOrden = parseInt($('colOrden').value, 10);
+  const idxRol = parseInt($('colRol').value, 10);
+
+  $('btnProcesar').disabled = true;
+
+  // Paso 1: consultar en BMS los nombres alternos (CRSNM/LNAME) de cada GID
+  // único del archivo -- uno por uno, con caché, solo para las filas que
+  // sí traen GID.
+  const gidsUnicos = [...new Set(sheetRows.map(row => {
+    const raw = idxGid >= 0 ? row[idxGid] : '';
+    return String(raw == null ? '' : raw).trim().replace(/\.0$/, '');
+  }).filter(Boolean))];
+
+  let hechos = 0;
+  for (const gid of gidsUnicos) {
+    $('procesarStatus').innerHTML = '<span class="spinner-inline"></span> Consultando nombres alternos en BMS... ' + hechos + '/' + gidsUnicos.length;
+    await obtenerNombresGermplasma(gid);
+    hechos++;
+  }
+
+  // Paso 2: evaluar cada fila ya con los nombres alternos en caché
+  ultimosResultados = sheetRows.map((row, i) => {
+    const gidRaw = idxGid >= 0 ? row[idxGid] : '';
+    const nameRaw = idxName >= 0 ? row[idxName] : '';
+    const orden = idxOrden >= 0 ? row[idxOrden] : (i + 1);
+    const rol = idxRol >= 0 ? row[idxRol] : '';
+    const res = evaluarFila(gidRaw, nameRaw);
+    return Object.assign({ orden, rol, gidArchivo: gidRaw, nombreArchivo: nameRaw }, res);
+  });
+
+  renderResultadosValidacion();
+  $('btnProcesar').disabled = false;
+}
+$('btnProcesar').addEventListener('click', procesarListado);
+
+function renderResultadosValidacion() {
+  const tbody = document.querySelector('#resultTable tbody');
+  tbody.innerHTML = '';
+  let cOk = 0, cWarn = 0, cBad = 0;
+
+  ultimosResultados.forEach(r => {
+    const info = ESTADO_INFO[r.estado];
+    let rowClass = 'row-gray';
+    if (info.tag === 'ok') { rowClass = 'row-ok'; cOk++; }
+    else if (info.tag === 'warn') { rowClass = 'row-warn'; cWarn++; }
+    else if (info.tag === 'bad') { rowClass = 'row-bad'; cBad++; }
+
+    const tr = document.createElement('tr');
+    tr.className = rowClass;
+    tr.innerHTML =
+      '<td>' + esc(r.orden) + '</td>' +
+      '<td>' + esc(r.rol) + '</td>' +
+      '<td>' + esc(r.gidArchivo) + '</td>' +
+      '<td>' + esc(r.nombreArchivo) + '</td>' +
+      '<td>' + esc(r.gidBMS) + '</td>' +
+      '<td>' + esc(r.desigBMS) + '</td>' +
+      '<td>' + esc(r.disponible) + '</td>' +
+      '<td><span class="tag ' + info.tag + '">' + info.texto + '</span></td>' +
+      '<td>' + esc(r.detalle) + '</td>';
+    tbody.appendChild(tr);
+  });
+
+  $('summary').style.display = 'flex';
+  $('sTotal').textContent = ultimosResultados.length;
+  $('sOk').textContent = cOk;
+  $('sWarn').textContent = cWarn;
+  $('sBad').textContent = cBad;
+  $('procesarStatus').textContent = 'Validación completa.';
+  $('btnExportValidacion').disabled = ultimosResultados.length === 0;
+}
+
+$('btnExportValidacion').addEventListener('click', () => {
+  const cols = ['Orden','Rol','GID archivo','Nombre archivo','GID BMS','Designation BMS','Disponible','Estado','Detalle'];
+  const lines = [cols.join(',')];
+  ultimosResultados.forEach(r => {
+    const info = ESTADO_INFO[r.estado];
+    const vals = [r.orden, r.rol, r.gidArchivo, r.nombreArchivo, r.gidBMS, r.desigBMS, r.disponible, info.texto, r.detalle]
+      .map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"');
+    lines.push(vals.join(','));
+  });
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'validacion_listado_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+});
+
+/* =========================================================================
+   FASE C: ARMADO — ESCANEO DE SOBRES (cámara del teléfono)
+   =========================================================================
+   Usa el mismo listado ya validado en "Validar Listado Crudo"
+   (ultimosResultados) como lista de materiales requeridos -- no vuelve a
+   tocar BMS. Escanea con la cámara los dos códigos del sobre (GID y
+   OBS_UNIT_ID, en cualquier orden) y clasifica cada código automáticamente:
+   si son solo dígitos se toma como GID, si no, como OBS_UNIT_ID.
+
+   El conteo de "Total/Faltan" es POR FILA del listado validado, no por GID
+   único -- si un mismo GID aparece 2 veces en tu archivo (2 sobres del
+   mismo material), hay que escanearlo 2 veces para completarlo.
+
+   IMPORTANTE: esta parte depende de la cámara real del teléfono y de la
+   librería html5-qrcode leyendo tus códigos de barras físicos, así que no
+   se pudo probar en este entorno de desarrollo -- pruébala en el celular y
+   avísame si algún formato de código no lo lee bien (se puede ajustar la
+   lista de formatos soportados).
+   ========================================================================= */
+
+let materialesRequeridos = new Map(); // gid -> {gid, nombre, disponible, necesarios, escaneados}
+let totalRequeridoFilas = 0;
+let historialSobres = [];
+let html5QrCodeSobre = null;
+let sobreActual = { gid: '', obsUnitId: '' };
+let streamFoto = null;
+
+let webAppUrlSync = localStorage.getItem('sobresWebAppUrlSync') || '';
+let procesadosRemotos = new Set(); // "timestamp|gid|obs" ya procesados, para no duplicar al sincronizar varias veces
+if (webAppUrlSync) { const elSync = document.getElementById('webAppUrlSync'); if (elSync) elSync.value = webAppUrlSync; }
+
+function guardarUrlSync() {
+  const url = $('webAppUrlSync').value.trim();
+  if (!url) { $('statusSync').innerHTML = '<span class="hl-bad">Pega primero la URL.</span>'; return; }
+  webAppUrlSync = url;
+  localStorage.setItem('sobresWebAppUrlSync', url);
+  $('statusSync').innerHTML = '<span class="hl-ok">URL guardada.</span>';
+}
+
+async function sincronizarEscaneosRemotos() {
+  if (!webAppUrlSync) { $('statusSync').innerHTML = '<span class="hl-bad">Primero guarda la URL del sistema.</span>'; return; }
+  if (!materialesRequeridos.size) { $('statusSync').innerHTML = '<span class="hl-bad">Primero carga el listado validado ("Usar listado validado").</span>'; return; }
+  $('statusSync').innerHTML = '<span class="spinner-inline"></span> Consultando escaneos remotos...';
+  try {
+    const r = await fetch(webAppUrlSync, { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const filas = await r.json();
+    let nuevos = 0;
+    filas.forEach(f => {
+      const clave = (f.Timestamp || '') + '|' + (f.GID || '') + '|' + (f.OBS_UNIT_ID || '');
+      if (procesadosRemotos.has(clave)) return;
+      procesadosRemotos.add(clave);
+      const gid = String(f.GID || '').trim();
+      if (!gid) return;
+      evaluarYRegistrarSobre(gid, String(f.OBS_UNIT_ID || ''), String(f.FotoURL || ''), String(f.EscaneadoPor || 'Persona B'));
+      nuevos++;
+    });
+    $('statusSync').innerHTML = '<span class="hl-ok">Sincronizado.</span> ' + nuevos + ' escaneo(s) nuevo(s) de ' + filas.length + ' en total.';
+  } catch (e) {
+    $('statusSync').innerHTML = '<span class="hl-bad">Error al sincronizar: ' + esc((e && e.message) || 'desconocido') + '</span>';
+  }
+}
+
+function prepararMaterialesRequeridos() {
+  materialesRequeridos = new Map();
+  totalRequeridoFilas = 0;
+  if (!ultimosResultados || !ultimosResultados.length) {
+    $('statusSobres').textContent = 'Todavía no has validado ningún listado en la pestaña "Validar Listado Crudo".';
+    return;
+  }
+  ultimosResultados.forEach(r => {
+    if (!r.gidBMS) return;
+    totalRequeridoFilas++;
+    const gid = String(r.gidBMS);
+    let e = materialesRequeridos.get(gid);
+    if (!e) {
+      e = { gid, nombre: r.desigBMS, disponible: r.disponible, necesarios: 0, escaneados: 0 };
+      materialesRequeridos.set(gid, e);
+    }
+    e.necesarios++;
+  });
+  $('statusSobres').textContent = totalRequeridoFilas + ' materiales (' + materialesRequeridos.size + ' GID únicos) cargados desde la validación.';
+  $('summarySobres').style.display = 'flex';
+  $('cardEscaneoSobre').style.display = 'block';
+  renderProgresoSobres();
+}
+
+function renderProgresoSobres() {
+  let hechos = 0;
+  materialesRequeridos.forEach(e => hechos += e.escaneados);
+  $('sTotalSobres').textContent = totalRequeridoFilas;
+  $('sEscaneadosSobres').textContent = hechos;
+  $('sFaltanSobres').textContent = totalRequeridoFilas - hechos;
+
+  const faltantes = [];
+  materialesRequeridos.forEach(e => {
+    const rest = e.necesarios - e.escaneados;
+    if (rest > 0) faltantes.push('GID ' + e.gid + ' — ' + e.nombre + (e.necesarios > 1 ? ' (faltan ' + rest + ' de ' + e.necesarios + ')' : ''));
+  });
+  const cont = $('listaFaltantes');
+  cont.innerHTML = faltantes.length
+    ? faltantes.map(f => esc(f)).join('<br>')
+    : (totalRequeridoFilas ? '<span class="hl-ok">¡Completo! Ya escaneaste todos los materiales.</span>' : '');
+}
+
+async function iniciarEscaneoSobre() {
+  if (!materialesRequeridos.size) { $('statusSobres').textContent = 'Primero carga el listado validado.'; return; }
+  sobreActual = { gid: '', obsUnitId: '' };
+  $('btnIniciarCamara').style.display = 'none';
+  $('btnDetenerCamara').style.display = 'inline-block';
+  $('fotoSobreWrap').style.display = 'none';
+  $('statusEscaneoSobre').innerHTML = 'Apunta la cámara al primer código del sobre...';
+
+  html5QrCodeSobre = new Html5Qrcode('readerSobre');
+  try {
+    await html5QrCodeSobre.start(
+      { facingMode: 'environment' },
+      {
+        fps: 10,
+        qrbox: { width: 260, height: 160 },
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_93, Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E, Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ]
+      },
+      (decodedText) => onCodigoDetectado(decodedText),
+      () => {} // ignorar fallos de frame individuales (normal mientras enfoca)
+    );
+  } catch (e) {
+    $('statusEscaneoSobre').innerHTML = '<span class="hl-bad">No se pudo iniciar la cámara: ' + esc((e && (e.message || e.name)) || 'error desconocido') + '. Si estás dentro de WhatsApp u otra app, abre este enlace en Chrome directamente.</span>';
+    $('btnIniciarCamara').style.display = 'inline-block';
+    $('btnDetenerCamara').style.display = 'none';
+  }
+}
+
+function onCodigoDetectado(texto) {
+  const val = String(texto).trim();
+  const esNumerico = /^\d+$/.test(val);
+  if (esNumerico) {
+    if (sobreActual.gid === val) return; // misma lectura repetida, ignorar
+    sobreActual.gid = val;
+  } else {
+    if (sobreActual.obsUnitId === val) return;
+    sobreActual.obsUnitId = val;
+  }
+  $('statusEscaneoSobre').innerHTML =
+    (sobreActual.gid ? ('GID: ' + esc(sobreActual.gid)) : 'GID: (falta escanear)') + ' &middot; ' +
+    (sobreActual.obsUnitId ? ('OBS_UNIT_ID: ' + esc(sobreActual.obsUnitId)) : 'OBS_UNIT_ID: (falta escanear)');
+
+  if (sobreActual.gid && sobreActual.obsUnitId) {
+    detenerEscaneoSobre(false);
+    evaluarSobre();
+  }
+}
+
+async function detenerEscaneoSobre(manual) {
+  if (html5QrCodeSobre) {
+    try { await html5QrCodeSobre.stop(); html5QrCodeSobre.clear(); } catch (e) {}
+    html5QrCodeSobre = null;
+  }
+  $('btnIniciarCamara').style.display = 'inline-block';
+  $('btnDetenerCamara').style.display = 'none';
+  if (manual) $('statusEscaneoSobre').textContent = 'Cámara detenida.';
+}
+
+function evaluarYRegistrarSobre(gid, obsUnitId, foto, escaneadoPor) {
+  const req = materialesRequeridos.get(gid);
+  let resultado, cls;
+  if (!req) {
+    resultado = 'No está en el listado solicitado';
+    cls = 'hl-bad';
+  } else if (req.escaneados >= req.necesarios) {
+    resultado = 'Ya se escanearon los ' + req.necesarios + ' esperados de este GID (repetido de más)';
+    cls = 'hl-bad';
+  } else {
+    req.escaneados++;
+    resultado = 'OK — material del listado (' + req.escaneados + '/' + req.necesarios + ')';
+    cls = 'hl-ok';
+  }
+  historialSobres.unshift({
+    hora: new Date().toLocaleTimeString(),
+    gid: gid,
+    nombre: req ? req.nombre : '',
+    obs: obsUnitId,
+    disponible: req ? req.disponible : '',
+    resultado,
+    foto: foto || '',
+    escaneadoPor: escaneadoPor || ''
+  });
+  renderProgresoSobres();
+  renderHistorialSobres();
+  return { resultado, cls, req };
+}
+
+function evaluarSobre() {
+  const res = evaluarYRegistrarSobre(sobreActual.gid, sobreActual.obsUnitId, '', 'Persona A (local)');
+  $('statusEscaneoSobre').innerHTML =
+    'GID ' + esc(sobreActual.gid) + (res.req ? ' — ' + esc(res.req.nombre) : '') + ' &middot; OBS_UNIT_ID ' + esc(sobreActual.obsUnitId) +
+    (res.req ? ' &middot; Disponible: ' + esc(res.req.disponible) : '') +
+    '<br><span class="' + res.cls + '">' + res.resultado + '</span>';
+  $('fotoSobreWrap').style.display = 'block';
+}
+
+function renderHistorialSobres() {
+  const tb = document.querySelector('#histSobresTable tbody');
+  tb.innerHTML = '';
+  historialSobres.forEach(h => {
+    const tr = document.createElement('tr');
+    const fotoCell = !h.foto ? '&mdash;'
+      : (h.foto.indexOf('data:') === 0
+          ? '<a href="' + h.foto + '" download="sobre_' + esc(h.gid) + '.jpg">ver</a>'
+          : '<a href="' + esc(h.foto) + '" target="_blank" rel="noopener">ver foto</a>');
+    tr.innerHTML =
+      '<td>' + esc(h.hora) + '</td>' +
+      '<td class="mono">' + esc(h.gid) + '</td>' +
+      '<td>' + esc(h.nombre) + '</td>' +
+      '<td class="mono">' + esc(h.obs) + '</td>' +
+      '<td>' + esc(h.disponible) + '</td>' +
+      '<td>' + esc(h.resultado) + '</td>' +
+      '<td>' + esc(h.escaneadoPor) + '</td>' +
+      '<td>' + fotoCell + '</td>';
+    tb.appendChild(tr);
+  });
+}
+
+/* ---- Foto del sobre: cámara aparte, captura manual, descarga al teléfono ---- */
+async function tomarFotoSobre() {
+  $('videoFotoWrap').style.display = 'block';
+  try {
+    streamFoto = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    $('videoFoto').srcObject = streamFoto;
+  } catch (e) {
+    alert('No se pudo abrir la cámara para la foto: ' + ((e && (e.message || e.name)) || 'error desconocido'));
+  }
+}
+
+function capturarFoto() {
+  const video = $('videoFoto');
+  const canvas = $('canvasFoto');
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+  if (streamFoto) { streamFoto.getTracks().forEach(t => t.stop()); streamFoto = null; }
+  $('videoFotoWrap').style.display = 'none';
+  $('fotoSobreWrap').style.display = 'none';
+
+  if (historialSobres.length) {
+    historialSobres[0].foto = dataUrl;
+    renderHistorialSobres();
+  }
+
+  // Por ahora la foto se descarga directo al teléfono (galería/descargas).
+  // Cuando conectemos Google Drive, este mismo punto es donde se sube.
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = 'sobre_' + (sobreActual.gid || 'sin_gid') + '_' + Date.now() + '.jpg';
+  a.click();
+}
+
+function exportarHistorialSobres() {
+  if (!historialSobres.length) { alert('No hay historial para exportar.'); return; }
+  const headers = ['Hora','GID','Nombre BMS','OBS_UNIT_ID','Disponible','Resultado','Quién','FotoURL'];
+  const rows = [headers.join(',')];
+  historialSobres.forEach(h => {
+    const vals = [h.hora, h.gid, h.nombre, h.obs, h.disponible, h.resultado, h.escaneadoPor, h.foto];
+    rows.push(vals.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(','));
+  });
+  const csv = '\uFEFF' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sobres_escaneados_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+function limpiarHistorialSobres() {
+  historialSobres = [];
+  renderHistorialSobres();
+}
 </script>
 </body>
 </html>
