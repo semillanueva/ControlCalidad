@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Escaneo de Sobres - Vivero</title>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+    :root { --bg:#f4f6f8; --card:#fff; --accent:#1f6f43; --line:#dfe3e8;
+            --ok:#137333; --okbg:#e6f4ea; --bad:#b00020; --badbg:#fce8e6; --amber:#9a6700; --amberbg:#fff4e0; }
+    * { box-sizing:border-box; }
+    body { font-family:system-ui, 'Segoe UI', Roboto,Arial,sans-serif; background:var(--bg); margin: 0; color:#1a1a1a; }
+    .container  { max-width: 520px; margin:0 auto; padding:16px; }
+    h1 { color:var(--accent); margin:.2em 0 .1em; font-size:1.3rem; }
+    .subtitle { color:#5f6368; margin:0 0 1em; font-size:.85rem; }
+    h2 { margin:1.2em 0 .5em; font-size:1rem; border-bottom:2px solid var(--line); padding-bottom: 4px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+    label { font-size:.8rem; font-weight:600; color:#444; display:block; margin-bottom:4px; }
+    input[type=text] {width:100%; padding:9px 10px; border:1px solid var(--line); padding-bottom:4px; }
+    button { cursor:pointer; border:none; border-radius:6px; padding:11px 16px; font-size:.92rem; font-weight:700; width:100%; margin-bottom:8px; }
+    .btn-primary { background:var(--accent); color:#fff; }
+    .btn-primary:disabled { background:#a9c4b6; cursor:not-allowed; }
+    .btn-secondary { background:#eef0f2; color:#333; }
+    .status { font-size:.85rem; margin-top:8px; line-height:1.5; }
+    .h1-ok { color:var(--ok); font-weight:700; }
+    .h1-bad { color:var(--bad); font-weight:700; }
+    .h1-amber { color:var(--amber); font-weight:700; }
+    #readerSobre { max-width:100%; margin-top:8px; }
+    video { max-width:100%; border-radius:8px; display:block; }
+    .contador { text-align:center; background:var(--okbg); color:var(--ok); border-radius:10px; padding:14px; margin-bottom:14px; }
+    .contador .n { font-size:2rem; font-weight:800; display:block; }
+    .contador .label { font-size:.75rem; text-transform:uppercase; }
+    .tip { font-size:.78rem; color:#666; background:#fff8e1; border:1px solid #f0e0a0; border-radius:8px; padding:8px 10px; margin-top:10px; }
+    ul#logEnvios { list-style:none; padding:0; margin:0; font-size:.82rem; }
+    ul#logEnvios li { padding:8px 0; border-bottom:1px solid var(--line); }
+    </style>
+    </head>
+    <body>
+    <div class="container">
+        <h1>Escaneo de Sobres - Viveros</h1>
+        <p class="subtitle">Escanea el sobre y toma la foto. Todo se envía directo al sistema para que lo revisen - no necesitas conexión a BMS</p>
+
+        <div class="card" id="cardConfig">
+                <label>Tu nombre (para que sepan quien escaneó)</label>
+                <input type="text" id="nombrePersona" placeholder="Ej. Juan Pérez">
+                <label>URL del sistema</label>
+                <input type="text" id="webAppUrl" placeholder="https://script.google.com/macros/s/XXXXX/exec">
+                <button class="btn-primary" onclick="guardarConfig()">Guardar</button>
+                <div class="status" id="statusConfig"></div>
+        </div>
+
+        <div class="contador">
+                <span class="n" id="contadorEnviados">0</span>
+                <span class="label">Sonbre enviado en esta sesión</span>
+        </div>
+
+        <div class="n" id="cardEscaneo" style="display:none;">
+                <label style="color:var(--accent); font-size:.9rem;">Escanear Sobre</label>
+                <button class="btn-primary" id="btnIniciarCamara" onclick="iniciarEscaneoSobre()">Escanear sobre (cámara)</button>
+                <button class="btn-secondary" id="btnDetenerCamara" onclick="detenerEcaneoSobre(true)" style="display:none">Dentener Cámara</button>     
+                <div id="reader Sobre"></div>
+                <div class="status" id="statusEscaneoSobre"></div>
+
+                <div id="fotoSobreWrap" style="display:none; margin-top:10px;">
+                        <button class="btn-primary" id="btnTomarFoto" onclick="tomarFotoSobre()">Tomar foto del sobre</button>
+                        <div id="videoFotoWrap" style="display:none;">
+                                <video id="videoFoto" autoplay playsinline></video>
+                                <button class="btn-primary" onclick="capturaFoto()" style="margin-top:8px;">Capturar</button>
+                        </div>
+                        <canvas id="canvasFoto" style="display:none;"></canvas>
+                </div>
+
+                <div class="tip">Si la cámara no abre: asegúrate de estar en Chrome (no dentro de Whatsapp u otra app) y acepta el permiso de la cámara lo pida</div>
+        </div>
+        
+        <h2>Últimos envíos</h2>
+        <ul id="logEnvio">♠</ul>
+    </div>
+
+    <script>
+        const $ = id => document.getElementById(id);
+        function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;',' <':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+        let webAppUrl = localStorage.getItem('sobresWebAppUrl') || '';
+        let nombrePersona = localStorage.getItem('sobresNombrePersona') || '';
+        let enviados = parseInt(localStorage.getItem('sobresEnviadosCount') || '0', 10);
+
+        function cargarConfigGuardada(){
+                if (webAppUrl) $('webAppUrl').value = webAppUrl;
+                if (nombrePersona) $('nombrePersona').value = nombrePersona;
+                $('contadorEnviados').textContent = enviados;
+                if (webAppUrl && nombrePersona) {
+                        $('cardEscaneo').style.display = 'block';
+                        $('statusConfig').innerHTML = '<span class="hl-ok">Listo para escanear.</span>';
+                }
+        }
+        cargarConfigGuardada();
+
+        function guardarConfig() {
+                const url = $('webAppUrl').value.trim();
+                const nombre =  $('nombrePersona').value.trim
+                if (!url || !nombre) {
+                $('statusConfig').innerHTML = '<span class="hl-bad">Completa tu nombre y la URL antes de guardar.</span>';
+                return;
+                }
+                webAppUrl = url;
+                nombrePersona = nombre;
+                localStorage.setItem('sobresWebAppUrl',url);
+                localStorage.setItem('sobresNombrePersona', nombre);
+                $('statusConfig').innerHTML = '<span class="hl-ok">Guardado. Listo para esanear</span>';
+                $('cardEscaneo').style.display = 'block';
+        }
+
+        /*--- Escaneo con cámara: dos códigos (Gid + OBS_UNIT_ID), en cualquier orden --- */
+        let html5QrCodeSobre = null;
+        let sobreActual = { gid: '', obsUnitId: '' };
+        let streamFoto = null;
+
+        async function iniciarEscaneoSobre(){
+                sobreActual = { gid: '', obsUnitId: '' };
+                $('btnIniciarCamara').style.display = 'none';
+                $('btnDetenerCamara').style.display = 'block';
+                $('statusEscaneoSobre').innerHTML = 'Apunta la cámara aal primer Código del sobre...';
+
+                html5QrCodeSobre = new htmlQrcode('readerSobre');
+                try {
+                        await html5QrCodeSobre.start(
+                                { facingMode: 'enviroment' },
+                                {
+                                        fps: 10,
+                                        qrbox: { width: 260, height: 160},
+                                        formatsToSupport: [
+                                                html5QrcodeSupportedFormats.CODE_128, html5QrcodeSupportedFormats.CODE_39,
+                                                html5QrcodeSupportedFormats.CODE_93, html5QrcodeSupportedFormats.EAN_13,
+                                                html5QrcodeSupportedFormats.EAN_8, html5QrcodeSupportedFormats.UPC_A,
+                                                html5QrcodeSupportedFormats.UPC_E, html5QrcodeSupportedFormats.ITF,
+                                                html5QrcodeSupportedFormats.QR_CODE
+                                        ]
+                                },
+                                (decodedText) => onCodigoDetectado(decodedText),
+                                () => {}
+                        );
+                } catch (E) {
+                        const msg = (e && (e.message || e.name || e.toString && e.toString())) || 'Error desconocido';
+                        $('statusEscaneoSobre').innerHTML = '<span class ="hl-bad">No se pudo iniciar la cámara: ' + esc(msg) + '</span';
+                        $('btnIniciarCamara').style.display = 'block';
+                        $('btnDetenerCamara').style.display = 'none';
+                }
+
+        }
+
+        function onCodigoDetectado(texto){
+                const val = String(texto).trim();
+                const esNumerico = /^\d+$/.test(val);
+                if (esNumerico) {
+                        if (sobreActual.gid === val) return;
+                        sobreActual.obsUnitId = val;
+                } else {
+                        if (sobreActual.obsUnitId === val) return;
+                        sobreActual.obsUnitId = val;
+                }
+                $('statusEscaneoSobre').innerHTML =
+                (sobreActual.gid ? ('GID: ' + esc(sobreActual.gid)): 'GID: (falta escanear)') + '&middot; ' +
+                (sobreActual.obsUnitId ? ('OBS_UNIT_ID: ' + esc(sobreActual.obsUnitId)) : 'OBS_UNIT_ID: (falta escanear)');
+                
+                if (sobreActual.gid && sobreActual.obsUnitId) {
+                        detenerEcaneoSobre(false);
+                        $('statusEscaneoSobre').innerHTML += '<br><span class="hl-ok">Codigos completos. Ahora toma la foto.</span>';
+                        $('fotoSobreWrap').style.display = 'block';
+                }
+        }
+
+        async function detenerEcaneoSobre(manual) {
+             if (html5QrCodeSobre) {
+                try { await html5QrCodeSobre.stop(); html5QrCodeSobre.clear(); } catch (e) {}
+                html5QrCodeSobre = null;
+             }   
+             $('btnIniciarCamara').style.display = 'block';
+             $('btnDetenerCamara').style.display = 'none';
+             if (manual) $('statusEscaneoSobre').textContent = 'Cámara detenida';
+        }
+
+        /* ----- Foto envio al backend --- */
+        async function tomarFotoSobre(){
+                $('videoFoto').style.display = 'block';
+                try {
+                        streamFoto = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'enviroment' } });
+                        $('videoFoto').srcObject =  streamFoto;
+                } catch (e) {
+                        const msg = (e && (e.message || e.name)) || 'Error desconocido';
+                        alert('No se pudo abrir la cámara para la foto: ' + msg);
+                }
+        }
+
+        function capturaFoto() {
+                const video = $('videoFoto');
+                const canvas = $('canvasFoto');
+                canvas.width = videdo.videoWidth || 640;
+                canvas.height = video.videoHeight || 480;
+                canvas.getContext('2d').drawImage(viedo, 0, 0, canvas.width, canvas.height);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+                if (streamFoto) { streamFoto.getTracks().forEach(t => t.stop()); streamFoto = null; }
+                $('videoFotoWrap').style.display = 'none';
+                $('fotoSobreWrap').style.display = 'none';
+
+                enviarSobre(dataUrl);
+        }
+
+        async function enviarSobre(fotoDataUrl) {
+                agregarLog(sobreActual.gid, sobreActual.obsUnitId, 'Enviando...', '');
+                try{
+                        const r = await fetch(webAppUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight CORS con apps script
+                                body: JSON.stringify({
+                                        gid: sobreActual.gid,
+                                        obsUnitId: sobreActual.obsUnitId,
+                                        fotoBase64: fotoDataUrl,
+                                        escaneadoPor: nombrePersona
+                                })
+                        });
+                        const d = await r.json();
+                        if (d.ok) {
+                                enviados++;
+                                localStorage.setItem('sobresEnviadosCount', String(enviados));
+                                $('contadorEnviados').textContent = enviados;
+                                actualizarLog(sobreActual.gid, '<span class="h1-ok">Enviado correctamente</span>');
+                        } else {
+                                actualizarLog(sobreActual.gid, '<span class="hl-ok">Error del servidor: ' + esc(d.error || '') + '</span>');
+                        }
+                } catch (e) {
+                        const  msg  = (e && e.message) || 'sin conexion';
+                        actualizarLog(sobreActual.gid, '<span class="hl-bad">No se pudo enviar (' + esc(msg) + '). Revisa tu internet e intentalo de nuevo escaneando este sobre otra vez</span>');
+                }
+        }
+
+        let logItems = [];
+        function agregarLog(gid, obs, estadoTexto, extra) {
+                logItems.unshift({ gid, obs, hora: new Date().toLocaleTimeString(), estado: estadoTexto });
+                renderLog();
+        }
+        function actualizarLog(gid, estadoHtml){
+                if (logItems.length) { logItems[0].estado = estadoHtml; }
+                renderLog();
+        }
+        function renderLog() {
+                const ul = $('logEnvios');
+                ul.innerHTML = logItems.slice(0, 15).map(it =>
+                        '<li>' + it.hora + ' &middot; GID ' + esc(it.gid) + ' &middot; OBS' + esc(it.obs) + '<br>' + it.estado + '</li>'
+                ).join('');
+        }
+     </script>
+    </body>
+    </html>
