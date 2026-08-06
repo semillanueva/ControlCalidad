@@ -159,6 +159,7 @@
     <button class="tab-btn active" id="tabBtnEscaneo" onclick="showTab('escaneo')">Escaneo Lote &harr; Vivero</button>
     <button class="tab-btn" id="tabBtnValidacion" onclick="showTab('validacion')">Validar Listado Crudo</button>
     <button class="tab-btn" id="tabBtnSobres" onclick="showTab('sobres')">Armado &mdash; Escaneo de Sobres</button>
+    <button class="tab-btn" id="tabBtnGenebak" onclick="showTab('genbank')">Genbank &mdash; Verificación</button>
   </div>
 
   <div id="tabEscaneo">
@@ -334,6 +335,59 @@
       </table>
     </div>
   </div> <!-- /tabSobres -->
+  <div id="tabGenbank" style="display:none">
+  <p style="font-size:.85rem;color:#666;margin:0 0 10px">
+    Primero carga el vivero en la pestaña "Escaneo Lote &harr; Vivero" (Buscar vivero + Cargar OBS UNIT).
+    Aquí escaneas el sticker (un solo código = OBS_UNIT_ID), confirmas contra BMS ya cargado, y tomas la foto de evidencia.
+    Este registro es solo de esta sesión &mdash; no se guarda en ningún lado si cierras la página.
+  </p>
+
+  <div class="scan-row">
+    <div class="scan-box" style="max-width:420px">
+      <label>Escanear sticker (OBS_UNIT_ID)</label>
+      <input type="text" id="scanGenbank" placeholder="Carga el vivero primero" autocomplete="off" disabled>
+      <div class="sub" id="subGenbank"></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn-load" id="btnIniciarCamaraGenbank" onclick="iniciarEscaneoGenbank()">Escanear con cámara</button>
+    <button class="btn-secondary" id="btnDetenerCamaraGenbank" onclick="detenerEscaneoGenbank(true)" style="display:none">Detener cámara</button>
+  </div>
+  <div id="readerGenbank" style="max-width:340px;margin-top:6px;"></div>
+
+  <div class="panel">
+    <div>
+      <h3>Material escaneado</h3>
+      <div class="kv" id="kvGenbank">
+        <b>OBS UNIT ID</b><span>&mdash;</span>
+        <b>GID</b><span>&mdash;</span>
+        <b>DESIGNATION</b><span>&mdash;</span>
+        <b>PLOT_IN_TRIAL</b><span>&mdash;</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="fotoGenbankWrap" style="display:none; margin-top:10px;">
+    <button class="btn-load" onclick="tomarFotoGenbank()">Tomar foto de evidencia</button>
+    <div id="videoFotoGenbankWrap" style="display:none; margin-top:8px;">
+      <video id="videoFotoGenbank" autoplay playsinline style="max-width:320px;border-radius:8px;display:block;"></video>
+      <button class="btn-load" onclick="capturarFotoGenbank()" style="margin-top:8px;">Capturar</button>
+    </div>
+    <canvas id="canvasFotoGenbank" style="display:none;"></canvas>
+  </div>
+
+  <h2>Registro (solo esta sesión)</h2>
+  <div class="toolbar">
+    <button class="act" onclick="limpiarHistorialGenbank()">Limpiar</button>
+  </div>
+  <table id="histGenbankTable">
+    <thead><tr>
+      <th>Hora</th><th>OBS_UNIT_ID</th><th>GID</th><th>DESIGNATION</th><th>PLOT_IN_TRIAL</th><th>Foto</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+</div> <!-- /tabGenbank -->
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -877,6 +931,7 @@ async function cargarViveroBMS() {
     const nombres = estudiosSeleccionados.map(s => esc(s.studyName) + (s.programName ? ' (' + esc(s.programName) + ')' : '')).join(', ');
     statusEl.innerHTML = '<span class="hl-ok">Vivero cargado:</span> ' + viveroIndex.size + ' OBS UNIT ID únicos de ' +
       estudiosSeleccionados.length + ' ambiente' + (estudiosSeleccionados.length>1?'s':'') + ' (' + nombres + ').';
+      document.getElementById('scanGenbank').disabled = false;
   }
   btn.disabled = false;
 }
@@ -919,7 +974,7 @@ async function resolverGIDsFaltantes(crop) {
 }
 
 function indexarObsUnit(rec, envName) {
-  if (!window.__yaLoggeaado) { window.__yaLoggeaado = true; console.log('REGISTRO CRUDO:', JSON.stringify(rec.observationUnitPosition, null, 2));}
+  if (!window.__yaLoggeaado) { window.__yaLoggeaado = true; console.log('REGISTRO CRUDO COMPLETO:', JSON.stringify(rec, null, 2));}
   const obs = rec.observationUnitDbId || rec.observationUnitName || '';
   if (!obs) return;
   let gid = String(rec.gid || '');
@@ -1149,11 +1204,148 @@ function showTab(tab) {
   $('tabEscaneo').style.display = (tab === 'escaneo') ? '' : 'none';
   $('tabValidacion').style.display = (tab === 'validacion') ? '' : 'none';
   $('tabSobres').style.display = (tab === 'sobres') ? '' : 'none';
+  $('tabGenbank').style.display = (tab === 'genbank') ? '' : 'none';
   $('tabBtnEscaneo').classList.toggle('active', tab === 'escaneo');
   $('tabBtnValidacion').classList.toggle('active', tab === 'validacion');
   $('tabBtnSobres').classList.toggle('active', tab === 'sobres');
+  $('tabBtnGenbank').classList.toggle('active', tab === 'genbank');
 }
 
+
+let genbankActual = null;
+let historialGenbank = [];
+
+$('scanGenbank').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const code = norm($('scanGenbank').value);
+  if (!code) return;
+  procesarEscaneoGenebank(code);
+  $('scanGenbank').value = '';
+  $('scanGenbank').focus();
+});
+
+function procesarEscaneoGenebank(code){
+  if (!viveroIndex.size) { $('subGenebank').innerHTML = '<span class="hl-bad">Carga Primero el Vivero (Pestaña Escaneo Lote &harr; Vivero).</span'; return; }
+    const hit = viveroIndex.get(code.toUpperCase());
+    if (!hit){
+      $('subGenebank').innerHTML = '<span class= "hl-bad">OBS_UNIT_ID no encontrado en el vivero Cargado.</span>';
+      genbankActual = null;
+      return;
+    }
+
+    genbankActual = { obs: code, gid: hit.gid, desig: hit.desig, plot: hit.plot, foto: ''};
+    $('subGenebank').innerHTML = '<span class="hl-ok">Encontrado &mdash; confirma contra el sticker.</span>';
+    $('kvGen').innerHTML = 
+    '<b>OBS UNIT ID</b><span class="mono">' + esc(code) + '</span>' +
+    '<b>GID</b><span class="mono"' + esc(hit.gid|| '-') + '</span>' +
+    '<b>DESIGNATION</b><span>' + esc(hit.desig||'-') + '</span>';
+    '<b>PLOT_IN_TRIAL</b><span class="mono">' + esc(hit.plot||'-') + '<span>';
+    $('fotoGenbamkWrap').style.display = 'block';
+    agregarHistorioalGenbank();
+}
+
+
+function agregarHistorioalGenbank() {
+  if (!genbankActual) return;
+  historialGenbank.unshift({ hojra: new Date().toLocaleDateString(), ...genbankActual })
+  renderHistorialGenbank();
+}
+
+function renderHistorialGenbank(){
+  const tb = document.querySelector('#histGenbankTable tbody');
+  tb.innerHTML = '';
+  historialGenbank.forEach(h => {
+  const tr = document.createElement('tr');
+  const fotoCell = h.foto ? '<a href="' + h.foto + '" download="genbank_' + esc(h.obs) + '.jpg">ver</a>' : '&mdash;';
+  tr.innerHTML = 
+    '<td>' + esc(h.hora) + '</td>' +
+    '<td class="mono">' + esc(h.obs) + '</td>' +
+    '<td class="mono">' + esc(h.gid||'-') + '</td>' +
+    '<td>' + esc(h.desig||'-') + '</td'> +
+    '<td class=mono">' + esc(h.plot||'-') + '</td>' +
+    '<td>' + fotoCell + '</td>';
+  tb.appendChild(tr);
+  });
+}
+
+
+
+function limpiarHistorialGenbank(){
+  historialGenbank = [];
+  renderHistorialGenbank();
+}
+
+let html5QrCodeGenebank = null;
+let streamFotoGenbank = null;
+
+async function iniciarEscaneoGenbank() {
+  if (!viveroIndex.size) { s('subGenbank').innerHTML = '<span class="hl-bad">Carga primero el vivero</span>'; return }
+  $('btnIniciarCamaraGenebank').style.display = 'none';
+  $('btnDetenerCamaraGenebank').style.display = 'inline-block';
+  $('subGenbank').innerHTML = 'Apunta la cámara al código del sticker....';
+
+  html5QrCodeGenebank = new Html5Qrcode('readerGenebank');
+  try {
+    await html5QrCodeGenebank.start(
+      { facingMode: 'environment' },
+      {
+        fps: 10,
+        qrbox: { width: 260, height: 160 },
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.QR_CODE
+        ]
+      },
+      (decodedText) => {
+        procesarEscaneoGenebank(String(decodedText).trim());
+        detenerEscaneoGenbank(false);
+      },
+      () => {}
+    );
+  } catch (e) {
+    $('subGenebank').innerHTML = '<span class="hl-bad">No se pudo iniciar la cámara: '  + esc((e && (e.message || e.name)) || 'Error desconocido') + '</span>';
+    $('btnIniciarCamaraGenebank').style.display = 'inline-block';
+    $('btnDetenerCamaraGenbank').style.display = 'none';
+  }
+}
+
+async function detenerEscaneoGenbank(manual) {
+  if (html5QrCodeGenebank) { 
+    try { await html5QrCodeGenebank.stop(); html5QrCodeGenebank.clear(); } catch (e) {}
+    html5QrCodeGenebank = null;
+  }
+  $('btnIniciarCamaraGenebank').style.display = 'inline-block';
+  $('btnDetenerCamaraGenebank').style.display = 'none';
+}
+
+async function tomarFotoGenbank() {
+  $('videoFotoGenebankWrap').style.display = 'block';
+  try {
+    streamFoto = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    $('videoFotoGenbank').srcObject = streamFotoGenbank;
+  } catch (e) {
+    alert('No se pudo abrir la cámara para la foto: ' + ((e && (e.message || e.name)) || 'Error desconocido'));
+  }
+}
+
+function capturarFotoGenbank() {
+  const video = $('videoFotoGenebank');
+  const canvas = $('canvasFotoGenbank');
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL('image/jpg', 0.85);
+
+  if (streamFotoGenbank) { streamFotoGenbank.getTracks().forEach(t => t.stop()); streamFotoGenbank = null; }
+  $('videdoFotoGenbankWrap').style.display = 'none';
+  $('fotoGenebankWrap').style.display = 'none';
+
+  if(historialGenbank.length) {
+    historialGenbank[0].foto = dataUrl;
+    renderHistorialGenbank();
+  }
+}
 /* =========================================================================
    VALIDACIÓN DE LISTADO CRUDO
    Usa el mismo gidIndex / uniqueGermplasmList que ya llenó cargarLotesBMS()
