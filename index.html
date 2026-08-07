@@ -158,7 +158,8 @@
   <div class="tab-bar">
     <button class="tab-btn active" id="tabBtnEscaneo" onclick="showTab('escaneo')">Escaneo Lote &harr; Vivero</button>
     <button class="tab-btn" id="tabBtnValidacion" onclick="showTab('validacion')">Validar Listado Crudo</button>
-    <button class="tab-btn" id="tabBtnGenbak" onclick="showTab('genbank')">Genbank &mdash; Verificación</button>
+    <button class="tab-btn" id="tabBtnGenbank" onclick="showTab('genbank')">Genbank &mdash; Verificación</button>
+    <button class="tab-btn" id="tabBtnReporte" onclick="showTab('reporte')">Reporte EK &harr; Genbank</button>
   </div>
 
   <div id="tabEscaneo">
@@ -324,6 +325,32 @@
     <tbody></tbody>
   </table>
 </div> <!-- /tabGenbank -->
+<div id ="tabReporte" style="display: none;">
+  <p style="font-size:.85rem;color:#666;margin:0 0 10px">
+    Cruza lo que EK solicitó (ya validado contra BMS) contra lo que AR ya escaneó y confirmó en Genbank &mdash; Verificación".
+    Ambas se comparan contra BMS por separado &mdash; este reporte solo junta los dos resultados para ver de un vistado que falta.
+  </p>
+  <div class="toolbar">
+    <button class="btn-load" onclick="generarReporteEKGenbank()">Generar Reporte</button>
+    <span class="file-status" id="statusReporte"></span>
+  </div>
+  <div class="summary" id="summaryReporte" style="display:none;">
+    <div class="box total"><span class="n" id="sTotalReporte">0</span><span class="label">Solicitado por EK</span></div>
+    <div class="box ok"><span class="n" id="sEscaneadoReporte">0</span><span class="label">Escaneado en Genbank</span></div>
+    <div class="box bad"><span class="n" id="sPendienteReporte">0</span><span class="label">Pendiente</span></div>
+  </div>
+  <div class="toolbar">
+    <button class="act" id="btnExportReporte" onclick="exportarReporte()" disabled>Exportar reporte (CSV)</button>
+  </div>
+  <div class="table-wrap">
+    <table id="reporteTable">
+      <thead><tr>
+        <th>Orden</th><th>GID</th><th>Nombre BMS</th><th>Disponible</th><th>Estado Validación EK</th><th>Escaneado en Genbank</th><th>Última hora</th><th>Foto</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div> <!--/tabReporte-->
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -1143,6 +1170,8 @@ function showTab(tab) {
   $('tabBtnEscaneo').classList.toggle('active', tab === 'escaneo');
   $('tabBtnValidacion').classList.toggle('active', tab === 'validacion');
   $('tabBtnGenbank').classList.toggle('active', tab === 'genbank');
+  $('tabReporte').style.display = (tab === 'reporte') ? '' : 'none';
+  $('tabBtnReporte').classList.toggle('active', tab === 'reporte');
 }
 
 
@@ -1163,7 +1192,7 @@ $('scanGenbank').addEventListener('keydown', e => {
 
 function procesarEscaneoGenbank(code) {
   if (!lotIndex.size) {
-    $('subGenbank').innerHTML = '<span class="hl-bad">Carga Primero el catálogo de lotes desde BMS</spna>';
+    $('subGenbank').innerHTML = '<span class="hl-bad">Carga Primero el catálogo de lotes desde BMS.</span>';
       return;
   }
   const hit = lotIndex.get(code.toUpperCase());
@@ -1631,6 +1660,92 @@ $('btnExportValidacion').addEventListener('click', () => {
   a.download = 'validacion_listado_' + new Date().toISOString().slice(0,10) + '.csv';
   a.click();
 });
+
+let reportRows = [];
+
+function generarReporteEKGenbank() {
+  if (!ultimosResultados.length) {
+    $('statusReporte').innerHTML = '<span class="hl-bad">Primero valida un listado en la pestaña "Validar Listado Crudo".</span>';
+    return;
+  }
+
+  const escaneosPorGid = new Map();
+  historialGenbank.forEach(h => {
+    if (!h.gid) return;
+    let e = escaneosPorGid.get(h.gid);
+    if (!e) { e = { veces: 0, ultimaHora: '', fotos: [] }; escaneosPorGid.set(h.gid, e); }
+    e.veces++;
+    if (!e.ultimaHora) e.ultimaHora = h.hora;
+    if (h.foto) e.fotos.push(h.foto);
+  });
+
+  reportRows = ultimosResultados
+    .filter(r => r.gidBMS)
+    .map(r => {
+      const e = escaneosPorGid.get(r.gidBMS);
+      return {
+        orden: r.orden,
+        gid: r.gidBMS,
+        nombre: r.desigBMS,
+        disponible: r.disponible,
+        estadoValidacion: ESTADO_INFO[r.estado].texto,
+        veces: e ? e.veces : 0,
+        ultimaHora: e ? e.ultimaHora : '',
+        fotos: e ? e.fotos : []
+      };
+    });
+
+  $('statusReporte').textContent = '';
+  renderReporte();
+}
+
+function renderReporte() {
+  const tbody = document.querySelector('#reporteTable tbody');
+  tbody.innerHTML = '';
+  let escaneados = 0;
+  reportRows.forEach(r => {
+    const ok = r.veces > 0;
+    if (ok) escaneados++;
+    const tr = document.createElement('tr');
+    tr.className = ok ? 'row-ok' : 'row-bad';
+    const fotoCell = r.fotos.length
+      ? r.fotos.map((f, i) => '<a href="' + f + '" download="genbank_' + esc(r.gid) + '_' + i + '.jpg">ver' + (r.fotos.length > 1 ? ' ' + (i + 1) : '') + '</a>').join(' &middot; ')
+      : '&mdash;';
+
+    tr.innerHTML =
+      '<td>' + esc(r.orden) + '</td>' +
+      '<td class="mono">' + esc(r.gid) + '</td>' +
+      '<td>' + esc(r.nombre) + '</td>' +
+      '<td>' + esc(r.disponible) + '</td>' +
+      '<td>' + esc(r.estadoValidacion) + '</td>' +
+      '<td>' + (ok ? '<span class="hl-ok">Sí (' + r.veces + ')</span>' : '<span class="hl-bad">No</span>') + '</td>' +
+      '<td>' + esc(r.ultimaHora || '-') + '</td>' +
+      '<td>' + fotoCell + '</td>';
+    tbody.appendChild(tr);
+  });
+  $('summaryReporte').style.display = 'flex';
+  $('sTotalReporte').textContent = reportRows.length;
+  $('sEscaneadoReporte').textContent = escaneados;
+  $('sPendienteReporte').textContent = reportRows.length - escaneados;
+  $('btnExportReporte').disabled = reportRows.length === 0;
+}
+
+function exportarReporte() {
+  if (!reportRows.length) { alert('No hay reporte generado.'); return; }
+  const headers = ['Orden', 'GID', 'Nombre BMS', 'Disponible', 'Estado validación EK', 'Escaneado en Genbank', 'Veces', 'Última hora'];
+  const rows = [headers.join(',')];
+  reportRows.forEach(r => {
+    const vals = [r.orden, r.gid, r.nombre, r.disponible, r.estadoValidacion, r.veces > 0 ? 'Sí' : 'No', r.veces, r.ultimaHora];
+    rows.push(vals.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(','));
+  });
+  const csv = '\uFEFF' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'reporte_ek_genbank_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
 </script>
 </body>
 </html>
