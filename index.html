@@ -158,8 +158,7 @@
   <div class="tab-bar">
     <button class="tab-btn active" id="tabBtnEscaneo" onclick="showTab('escaneo')">Escaneo Lote &harr; Vivero</button>
     <button class="tab-btn" id="tabBtnValidacion" onclick="showTab('validacion')">Validar Listado Crudo</button>
-    <button class="tab-btn" id="tabBtnSobres" onclick="showTab('sobres')">Armado &mdash; Escaneo de Sobres</button>
-    <button class="tab-btn" id="tabBtnGenebak" onclick="showTab('genbank')">Genbank &mdash; Verificación</button>
+    <button class="tab-btn" id="tabBtnGenbak" onclick="showTab('genbank')">Genbank &mdash; Verificación</button>
   </div>
 
   <div id="tabEscaneo">
@@ -273,68 +272,6 @@
     </div>
   </div> <!-- /tabValidacion -->
 
-  <div id="tabSobres" style="display:none">
-    <p style="font-size:.85rem;color:#666;margin:0 0 10px">Usa el listado ya validado en la pestaña "Validar Listado Crudo". Persona B escanea los sobres desde su propio teléfono (app aparte, sin sesión de BMS) y aquí sincronizas para comparar contra el listado.</p>
-
-    <div class="toolbar">
-      <button class="btn-load" id="btnPrepararSobres" onclick="prepararMaterialesRequeridos()">Usar listado validado</button>
-      <span class="file-status" id="statusSobres">Primero valida un listado en la pestaña "Validar Listado Crudo".</span>
-    </div>
-
-    <div class="summary" id="summarySobres" style="display:none;">
-      <div class="box total"><span class="n" id="sTotalSobres">0</span><span class="label">Total</span></div>
-      <div class="box ok"><span class="n" id="sEscaneadosSobres">0</span><span class="label">Escaneados</span></div>
-      <div class="box bad"><span class="n" id="sFaltanSobres">0</span><span class="label">Faltan</span></div>
-    </div>
-
-    <div class="conn-card" id="cardSync">
-      <label style="font-weight:700;color:var(--accent);display:block;margin-bottom:8px">Escaneos de Persona B (remotos)</label>
-      <div class="conn-grid" style="grid-template-columns:1fr;">
-        <div><label>URL del sistema (Apps Script)</label><input type="text" id="webAppUrlSync" placeholder="https://script.google.com/macros/s/XXXXX/exec"></div>
-      </div>
-      <div class="toolbar">
-        <button class="btn-load" onclick="guardarUrlSync()">Guardar URL</button>
-        <button class="btn-load" id="btnSincronizar" onclick="sincronizarEscaneosRemotos()">Sincronizar escaneos</button>
-      </div>
-      <div class="file-status" id="statusSync"></div>
-    </div>
-
-    <div class="conn-card" id="cardEscaneoSobre" style="display:none;">
-      <label style="font-weight:700;color:var(--accent);display:block;margin-bottom:8px">Escanear sobre (opcional, si Persona A también escanea desde aquí)</label>
-      <div class="toolbar">
-        <button class="btn-load" id="btnIniciarCamara" onclick="iniciarEscaneoSobre()">Escanear sobre (cámara)</button>
-        <button class="btn-secondary" id="btnDetenerCamara" onclick="detenerEscaneoSobre(true)" style="display:none">Detener cámara</button>
-      </div>
-      <div id="readerSobre" style="max-width:340px;margin-top:10px;"></div>
-      <div class="file-status" id="statusEscaneoSobre" style="margin-top:8px;"></div>
-
-      <div id="fotoSobreWrap" style="display:none; margin-top:12px;">
-        <button class="btn-load" id="btnTomarFoto" onclick="tomarFotoSobre()">Tomar foto del sobre</button>
-        <div id="videoFotoWrap" style="display:none; margin-top:8px;">
-          <video id="videoFoto" autoplay playsinline style="max-width:320px;border-radius:8px;display:block;"></video>
-          <button class="btn-load" onclick="capturarFoto()" style="margin-top:8px;">Capturar</button>
-        </div>
-        <canvas id="canvasFoto" style="display:none;"></canvas>
-      </div>
-    </div>
-
-    <h2>Faltan por escanear</h2>
-    <div id="listaFaltantes" style="font-size:.85rem;"></div>
-
-    <h2>Historial de sobres escaneados</h2>
-    <div class="toolbar">
-      <button class="act" id="btnExportSobres" onclick="exportarHistorialSobres()">Exportar historial (CSV)</button>
-      <button class="act" onclick="limpiarHistorialSobres()">Limpiar historial</button>
-    </div>
-    <div class="table-wrap">
-      <table id="histSobresTable">
-        <thead><tr>
-          <th>Hora</th><th>GID</th><th>Nombre BMS</th><th>OBS_UNIT_ID</th><th>Disponible</th><th>Resultado</th><th>Quién</th><th>Foto</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </div> <!-- /tabSobres -->
   <div id="tabGenbank" style="display:none">
   <p style="font-size:.85rem;color:#666;margin:0 0 10px">
     Primero carga el vivero en la pestaña "Escaneo Lote &harr; Vivero" (Buscar vivero + Cargar OBS UNIT).
@@ -1203,149 +1140,150 @@ $('btnExport').addEventListener('click', () => {
 function showTab(tab) {
   $('tabEscaneo').style.display = (tab === 'escaneo') ? '' : 'none';
   $('tabValidacion').style.display = (tab === 'validacion') ? '' : 'none';
-  $('tabSobres').style.display = (tab === 'sobres') ? '' : 'none';
   $('tabGenbank').style.display = (tab === 'genbank') ? '' : 'none';
   $('tabBtnEscaneo').classList.toggle('active', tab === 'escaneo');
   $('tabBtnValidacion').classList.toggle('active', tab === 'validacion');
-  $('tabBtnSobres').classList.toggle('active', tab === 'sobres');
   $('tabBtnGenbank').classList.toggle('active', tab === 'genbank');
 }
 
 
 let genbankActual = null;
 let historialGenbank = [];
+let html5QrCodeGenbank = null;
+let streamFotoGenbank = null;
 
 $('scanGenbank').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   e.preventDefault();
   const code = norm($('scanGenbank').value);
   if (!code) return;
-  procesarEscaneoGenebank(code);
+  procesarEscaneoGenbank(code);
   $('scanGenbank').value = '';
   $('scanGenbank').focus();
 });
 
-function procesarEscaneoGenebank(code){
-  if (!viveroIndex.size) { $('subGenebank').innerHTML = '<span class="hl-bad">Carga Primero el Vivero (Pestaña Escaneo Lote &harr; Vivero).</span'; return; }
-    const hit = viveroIndex.get(code.toUpperCase());
-    if (!hit){
-      $('subGenebank').innerHTML = '<span class= "hl-bad">OBS_UNIT_ID no encontrado en el vivero Cargado.</span>';
-      genbankActual = null;
-      return;
-    }
+function procesarEscaneoGenbank(code) {
+  if (!viveroIndex.size) {
+    $('subGenbank').innerHTML = '<span class="hl-bad">Carga primero el vivero (pestaña Escaneo Lote &harr; Vivero).</span>';
+    return;
+  }
+  const hit = viveroIndex.get(code.toUpperCase());
+  if (!hit) {
+    $('subGenbank').innerHTML = '<span class="hl-bad">OBS_UNIT_ID no encontrado en el vivero cargado.</span>';
+    genbankActual = null;
+    return;
+  }
 
-    genbankActual = { obs: code, gid: hit.gid, desig: hit.desig, plot: hit.plot, foto: ''};
-    $('subGenebank').innerHTML = '<span class="hl-ok">Encontrado &mdash; confirma contra el sticker.</span>';
-    $('kvGen').innerHTML = 
+  genbankActual = { obs: code, gid: hit.gid, desig: hit.desig, plot: hit.plot, foto: '' };
+  $('subGenbank').innerHTML = '<span class="hl-ok">Encontrado &mdash; confirma contra el sticker.</span>';
+  $('kvGenbank').innerHTML =
     '<b>OBS UNIT ID</b><span class="mono">' + esc(code) + '</span>' +
-    '<b>GID</b><span class="mono"' + esc(hit.gid|| '-') + '</span>' +
-    '<b>DESIGNATION</b><span>' + esc(hit.desig||'-') + '</span>';
-    '<b>PLOT_IN_TRIAL</b><span class="mono">' + esc(hit.plot||'-') + '<span>';
-    $('fotoGenbamkWrap').style.display = 'block';
-    agregarHistorioalGenbank();
+    '<b>GID</b><span class="mono">' + esc(hit.gid || '-') + '</span>' +
+    '<b>DESIGNATION</b><span>' + esc(hit.desig || '-') + '</span>' +
+    '<b>PLOT_IN_TRIAL</b><span class="mono">' + esc(hit.plot || '-') + '</span>';
+  $('fotoGenbankWrap').style.display = 'block';
+  agregarHistorialGenbank();
 }
 
-
-function agregarHistorioalGenbank() {
+function agregarHistorialGenbank() {
   if (!genbankActual) return;
-  historialGenbank.unshift({ hojra: new Date().toLocaleDateString(), ...genbankActual })
+  historialGenbank.unshift({ hora: new Date().toLocaleTimeString(), ...genbankActual });
   renderHistorialGenbank();
 }
 
-function renderHistorialGenbank(){
+function renderHistorialGenbank() {
   const tb = document.querySelector('#histGenbankTable tbody');
   tb.innerHTML = '';
   historialGenbank.forEach(h => {
-  const tr = document.createElement('tr');
-  const fotoCell = h.foto ? '<a href="' + h.foto + '" download="genbank_' + esc(h.obs) + '.jpg">ver</a>' : '&mdash;';
-  tr.innerHTML = 
-    '<td>' + esc(h.hora) + '</td>' +
-    '<td class="mono">' + esc(h.obs) + '</td>' +
-    '<td class="mono">' + esc(h.gid||'-') + '</td>' +
-    '<td>' + esc(h.desig||'-') + '</td'> +
-    '<td class=mono">' + esc(h.plot||'-') + '</td>' +
-    '<td>' + fotoCell + '</td>';
-  tb.appendChild(tr);
+    const tr = document.createElement('tr');
+    const fotoCell = h.foto ? '<a href="' + h.foto + '" download="genbank_' + esc(h.obs) + '.jpg">ver</a>' : '&mdash;';
+    tr.innerHTML =
+      '<td>' + esc(h.hora) + '</td>' +
+      '<td class="mono">' + esc(h.obs) + '</td>' +
+      '<td class="mono">' + esc(h.gid || '-') + '</td>' +
+      '<td>' + esc(h.desig || '-') + '</td>' +
+      '<td class="mono">' + esc(h.plot || '-') + '</td>' +
+      '<td>' + fotoCell + '</td>';
+    tb.appendChild(tr);
   });
 }
 
-
-
-function limpiarHistorialGenbank(){
+function limpiarHistorialGenbank() {
   historialGenbank = [];
   renderHistorialGenbank();
 }
 
-let html5QrCodeGenebank = null;
-let streamFotoGenbank = null;
-
 async function iniciarEscaneoGenbank() {
-  if (!viveroIndex.size) { s('subGenbank').innerHTML = '<span class="hl-bad">Carga primero el vivero</span>'; return }
-  $('btnIniciarCamaraGenebank').style.display = 'none';
-  $('btnDetenerCamaraGenebank').style.display = 'inline-block';
-  $('subGenbank').innerHTML = 'Apunta la cámara al código del sticker....';
+  if (!viveroIndex.size) {
+    $('subGenbank').innerHTML = '<span class="hl-bad">Carga primero el vivero.</span>';
+    return;
+  }
+  $('btnIniciarCamaraGenbank').style.display = 'none';
+  $('btnDetenerCamaraGenbank').style.display = 'inline-block';
+  $('subGenbank').innerHTML = 'Apunta la cámara al código del sticker...';
 
-  html5QrCodeGenebank = new Html5Qrcode('readerGenebank');
+  html5QrCodeGenbank = new Html5Qrcode('readerGenbank');
   try {
-    await html5QrCodeGenebank.start(
+    await html5QrCodeGenbank.start(
       { facingMode: 'environment' },
       {
         fps: 10,
         qrbox: { width: 260, height: 160 },
         formatsToSupport: [
           Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.QR_CODE
+          Html5QrcodeSupportedFormats.CODE_93, Html5QrcodeSupportedFormats.QR_CODE
         ]
       },
       (decodedText) => {
-        procesarEscaneoGenebank(String(decodedText).trim());
+        procesarEscaneoGenbank(String(decodedText).trim());
         detenerEscaneoGenbank(false);
       },
       () => {}
     );
   } catch (e) {
-    $('subGenebank').innerHTML = '<span class="hl-bad">No se pudo iniciar la cámara: '  + esc((e && (e.message || e.name)) || 'Error desconocido') + '</span>';
-    $('btnIniciarCamaraGenebank').style.display = 'inline-block';
+    $('subGenbank').innerHTML = '<span class="hl-bad">No se pudo iniciar la cámara: ' + esc((e && (e.message || e.name)) || 'error desconocido') + '</span>';
+    $('btnIniciarCamaraGenbank').style.display = 'inline-block';
     $('btnDetenerCamaraGenbank').style.display = 'none';
   }
 }
 
 async function detenerEscaneoGenbank(manual) {
-  if (html5QrCodeGenebank) { 
-    try { await html5QrCodeGenebank.stop(); html5QrCodeGenebank.clear(); } catch (e) {}
-    html5QrCodeGenebank = null;
+  if (html5QrCodeGenbank) {
+    try { await html5QrCodeGenbank.stop(); html5QrCodeGenbank.clear(); } catch (e) {}
+    html5QrCodeGenbank = null;
   }
-  $('btnIniciarCamaraGenebank').style.display = 'inline-block';
-  $('btnDetenerCamaraGenebank').style.display = 'none';
+  $('btnIniciarCamaraGenbank').style.display = 'inline-block';
+  $('btnDetenerCamaraGenbank').style.display = 'none';
 }
 
 async function tomarFotoGenbank() {
-  $('videoFotoGenebankWrap').style.display = 'block';
+  $('videoFotoGenbankWrap').style.display = 'block';
   try {
-    streamFoto = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    streamFotoGenbank = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
     $('videoFotoGenbank').srcObject = streamFotoGenbank;
   } catch (e) {
-    alert('No se pudo abrir la cámara para la foto: ' + ((e && (e.message || e.name)) || 'Error desconocido'));
+    alert('No se pudo abrir la cámara para la foto: ' + ((e && (e.message || e.name)) || 'error desconocido'));
   }
 }
 
 function capturarFotoGenbank() {
-  const video = $('videoFotoGenebank');
+  const video = $('videoFotoGenbank');
   const canvas = $('canvasFotoGenbank');
   canvas.width = video.videoWidth || 640;
   canvas.height = video.videoHeight || 480;
   canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-  const dataUrl = canvas.toDataURL('image/jpg', 0.85);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
   if (streamFotoGenbank) { streamFotoGenbank.getTracks().forEach(t => t.stop()); streamFotoGenbank = null; }
-  $('videdoFotoGenbankWrap').style.display = 'none';
-  $('fotoGenebankWrap').style.display = 'none';
+  $('videoFotoGenbankWrap').style.display = 'none';
+  $('fotoGenbankWrap').style.display = 'none';
 
-  if(historialGenbank.length) {
+  if (historialGenbank.length) {
     historialGenbank[0].foto = dataUrl;
     renderHistorialGenbank();
   }
 }
+
 /* =========================================================================
    VALIDACIÓN DE LISTADO CRUDO
    Usa el mismo gidIndex / uniqueGermplasmList que ya llenó cargarLotesBMS()
@@ -1691,291 +1629,6 @@ $('btnExportValidacion').addEventListener('click', () => {
   a.download = 'validacion_listado_' + new Date().toISOString().slice(0,10) + '.csv';
   a.click();
 });
-
-/* =========================================================================
-   FASE C: ARMADO — ESCANEO DE SOBRES (cámara del teléfono)
-   =========================================================================
-   Usa el mismo listado ya validado en "Validar Listado Crudo"
-   (ultimosResultados) como lista de materiales requeridos -- no vuelve a
-   tocar BMS. Escanea con la cámara los dos códigos del sobre (GID y
-   OBS_UNIT_ID, en cualquier orden) y clasifica cada código automáticamente:
-   si son solo dígitos se toma como GID, si no, como OBS_UNIT_ID.
-
-   El conteo de "Total/Faltan" es POR FILA del listado validado, no por GID
-   único -- si un mismo GID aparece 2 veces en tu archivo (2 sobres del
-   mismo material), hay que escanearlo 2 veces para completarlo.
-
-   IMPORTANTE: esta parte depende de la cámara real del teléfono y de la
-   librería html5-qrcode leyendo tus códigos de barras físicos, así que no
-   se pudo probar en este entorno de desarrollo -- pruébala en el celular y
-   avísame si algún formato de código no lo lee bien (se puede ajustar la
-   lista de formatos soportados).
-   ========================================================================= */
-
-let materialesRequeridos = new Map(); // gid -> {gid, nombre, disponible, necesarios, escaneados}
-let totalRequeridoFilas = 0;
-let historialSobres = [];
-let html5QrCodeSobre = null;
-let sobreActual = { gid: '', obsUnitId: '' };
-let streamFoto = null;
-
-let webAppUrlSync = localStorage.getItem('sobresWebAppUrlSync') || '';
-let procesadosRemotos = new Set(); // "timestamp|gid|obs" ya procesados, para no duplicar al sincronizar varias veces
-if (webAppUrlSync) { const elSync = document.getElementById('webAppUrlSync'); if (elSync) elSync.value = webAppUrlSync; }
-
-function guardarUrlSync() {
-  const url = $('webAppUrlSync').value.trim();
-  if (!url) { $('statusSync').innerHTML = '<span class="hl-bad">Pega primero la URL.</span>'; return; }
-  webAppUrlSync = url;
-  localStorage.setItem('sobresWebAppUrlSync', url);
-  $('statusSync').innerHTML = '<span class="hl-ok">URL guardada.</span>';
-}
-
-async function sincronizarEscaneosRemotos() {
-  if (!webAppUrlSync) { $('statusSync').innerHTML = '<span class="hl-bad">Primero guarda la URL del sistema.</span>'; return; }
-  if (!materialesRequeridos.size) { $('statusSync').innerHTML = '<span class="hl-bad">Primero carga el listado validado ("Usar listado validado").</span>'; return; }
-  $('statusSync').innerHTML = '<span class="spinner-inline"></span> Consultando escaneos remotos...';
-  try {
-    const r = await fetch(webAppUrlSync, { cache: 'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const filas = await r.json();
-    let nuevos = 0;
-    filas.forEach(f => {
-      const clave = (f.Timestamp || '') + '|' + (f.GID || '') + '|' + (f.OBS_UNIT_ID || '');
-      if (procesadosRemotos.has(clave)) return;
-      procesadosRemotos.add(clave);
-      const gid = String(f.GID || '').trim();
-      if (!gid) return;
-      evaluarYRegistrarSobre(gid, String(f.OBS_UNIT_ID || ''), String(f.FotoURL || ''), String(f.EscaneadoPor || 'Persona B'));
-      nuevos++;
-    });
-    $('statusSync').innerHTML = '<span class="hl-ok">Sincronizado.</span> ' + nuevos + ' escaneo(s) nuevo(s) de ' + filas.length + ' en total.';
-  } catch (e) {
-    $('statusSync').innerHTML = '<span class="hl-bad">Error al sincronizar: ' + esc((e && e.message) || 'desconocido') + '</span>';
-  }
-}
-
-function prepararMaterialesRequeridos() {
-  materialesRequeridos = new Map();
-  totalRequeridoFilas = 0;
-  if (!ultimosResultados || !ultimosResultados.length) {
-    $('statusSobres').textContent = 'Todavía no has validado ningún listado en la pestaña "Validar Listado Crudo".';
-    return;
-  }
-  ultimosResultados.forEach(r => {
-    if (!r.gidBMS) return;
-    totalRequeridoFilas++;
-    const gid = String(r.gidBMS);
-    let e = materialesRequeridos.get(gid);
-    if (!e) {
-      e = { gid, nombre: r.desigBMS, disponible: r.disponible, necesarios: 0, escaneados: 0 };
-      materialesRequeridos.set(gid, e);
-    }
-    e.necesarios++;
-  });
-  $('statusSobres').textContent = totalRequeridoFilas + ' materiales (' + materialesRequeridos.size + ' GID únicos) cargados desde la validación.';
-  $('summarySobres').style.display = 'flex';
-  $('cardEscaneoSobre').style.display = 'block';
-  renderProgresoSobres();
-}
-
-function renderProgresoSobres() {
-  let hechos = 0;
-  materialesRequeridos.forEach(e => hechos += e.escaneados);
-  $('sTotalSobres').textContent = totalRequeridoFilas;
-  $('sEscaneadosSobres').textContent = hechos;
-  $('sFaltanSobres').textContent = totalRequeridoFilas - hechos;
-
-  const faltantes = [];
-  materialesRequeridos.forEach(e => {
-    const rest = e.necesarios - e.escaneados;
-    if (rest > 0) faltantes.push('GID ' + e.gid + ' — ' + e.nombre + (e.necesarios > 1 ? ' (faltan ' + rest + ' de ' + e.necesarios + ')' : ''));
-  });
-  const cont = $('listaFaltantes');
-  cont.innerHTML = faltantes.length
-    ? faltantes.map(f => esc(f)).join('<br>')
-    : (totalRequeridoFilas ? '<span class="hl-ok">¡Completo! Ya escaneaste todos los materiales.</span>' : '');
-}
-
-async function iniciarEscaneoSobre() {
-  if (!materialesRequeridos.size) { $('statusSobres').textContent = 'Primero carga el listado validado.'; return; }
-  sobreActual = { gid: '', obsUnitId: '' };
-  $('btnIniciarCamara').style.display = 'none';
-  $('btnDetenerCamara').style.display = 'inline-block';
-  $('fotoSobreWrap').style.display = 'none';
-  $('statusEscaneoSobre').innerHTML = 'Apunta la cámara al primer código del sobre...';
-
-  html5QrCodeSobre = new Html5Qrcode('readerSobre');
-  try {
-    await html5QrCodeSobre.start(
-      { facingMode: 'environment' },
-      {
-        fps: 10,
-        qrbox: { width: 260, height: 160 },
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.CODE_93, Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E, Html5QrcodeSupportedFormats.ITF,
-          Html5QrcodeSupportedFormats.QR_CODE
-        ]
-      },
-      (decodedText) => onCodigoDetectado(decodedText),
-      () => {} // ignorar fallos de frame individuales (normal mientras enfoca)
-    );
-  } catch (e) {
-    $('statusEscaneoSobre').innerHTML = '<span class="hl-bad">No se pudo iniciar la cámara: ' + esc((e && (e.message || e.name)) || 'error desconocido') + '. Si estás dentro de WhatsApp u otra app, abre este enlace en Chrome directamente.</span>';
-    $('btnIniciarCamara').style.display = 'inline-block';
-    $('btnDetenerCamara').style.display = 'none';
-  }
-}
-
-function onCodigoDetectado(texto) {
-  const val = String(texto).trim();
-  const esNumerico = /^\d+$/.test(val);
-  if (esNumerico) {
-    if (sobreActual.gid === val) return; // misma lectura repetida, ignorar
-    sobreActual.gid = val;
-  } else {
-    if (sobreActual.obsUnitId === val) return;
-    sobreActual.obsUnitId = val;
-  }
-  $('statusEscaneoSobre').innerHTML =
-    (sobreActual.gid ? ('GID: ' + esc(sobreActual.gid)) : 'GID: (falta escanear)') + ' &middot; ' +
-    (sobreActual.obsUnitId ? ('OBS_UNIT_ID: ' + esc(sobreActual.obsUnitId)) : 'OBS_UNIT_ID: (falta escanear)');
-
-  if (sobreActual.gid && sobreActual.obsUnitId) {
-    detenerEscaneoSobre(false);
-    evaluarSobre();
-  }
-}
-
-async function detenerEscaneoSobre(manual) {
-  if (html5QrCodeSobre) {
-    try { await html5QrCodeSobre.stop(); html5QrCodeSobre.clear(); } catch (e) {}
-    html5QrCodeSobre = null;
-  }
-  $('btnIniciarCamara').style.display = 'inline-block';
-  $('btnDetenerCamara').style.display = 'none';
-  if (manual) $('statusEscaneoSobre').textContent = 'Cámara detenida.';
-}
-
-function evaluarYRegistrarSobre(gid, obsUnitId, foto, escaneadoPor) {
-  const req = materialesRequeridos.get(gid);
-  let resultado, cls;
-  if (!req) {
-    resultado = 'No está en el listado solicitado';
-    cls = 'hl-bad';
-  } else if (req.escaneados >= req.necesarios) {
-    resultado = 'Ya se escanearon los ' + req.necesarios + ' esperados de este GID (repetido de más)';
-    cls = 'hl-bad';
-  } else {
-    req.escaneados++;
-    resultado = 'OK — material del listado (' + req.escaneados + '/' + req.necesarios + ')';
-    cls = 'hl-ok';
-  }
-  historialSobres.unshift({
-    hora: new Date().toLocaleTimeString(),
-    gid: gid,
-    nombre: req ? req.nombre : '',
-    obs: obsUnitId,
-    disponible: req ? req.disponible : '',
-    resultado,
-    foto: foto || '',
-    escaneadoPor: escaneadoPor || ''
-  });
-  renderProgresoSobres();
-  renderHistorialSobres();
-  return { resultado, cls, req };
-}
-
-function evaluarSobre() {
-  const res = evaluarYRegistrarSobre(sobreActual.gid, sobreActual.obsUnitId, '', 'Persona A (local)');
-  $('statusEscaneoSobre').innerHTML =
-    'GID ' + esc(sobreActual.gid) + (res.req ? ' — ' + esc(res.req.nombre) : '') + ' &middot; OBS_UNIT_ID ' + esc(sobreActual.obsUnitId) +
-    (res.req ? ' &middot; Disponible: ' + esc(res.req.disponible) : '') +
-    '<br><span class="' + res.cls + '">' + res.resultado + '</span>';
-  $('fotoSobreWrap').style.display = 'block';
-}
-
-function renderHistorialSobres() {
-  const tb = document.querySelector('#histSobresTable tbody');
-  tb.innerHTML = '';
-  historialSobres.forEach(h => {
-    const tr = document.createElement('tr');
-    const fotoCell = !h.foto ? '&mdash;'
-      : (h.foto.indexOf('data:') === 0
-          ? '<a href="' + h.foto + '" download="sobre_' + esc(h.gid) + '.jpg">ver</a>'
-          : '<a href="' + esc(h.foto) + '" target="_blank" rel="noopener">ver foto</a>');
-    tr.innerHTML =
-      '<td>' + esc(h.hora) + '</td>' +
-      '<td class="mono">' + esc(h.gid) + '</td>' +
-      '<td>' + esc(h.nombre) + '</td>' +
-      '<td class="mono">' + esc(h.obs) + '</td>' +
-      '<td>' + esc(h.disponible) + '</td>' +
-      '<td>' + esc(h.resultado) + '</td>' +
-      '<td>' + esc(h.escaneadoPor) + '</td>' +
-      '<td>' + fotoCell + '</td>';
-    tb.appendChild(tr);
-  });
-}
-
-/* ---- Foto del sobre: cámara aparte, captura manual, descarga al teléfono ---- */
-async function tomarFotoSobre() {
-  $('videoFotoWrap').style.display = 'block';
-  try {
-    streamFoto = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    $('videoFoto').srcObject = streamFoto;
-  } catch (e) {
-    alert('No se pudo abrir la cámara para la foto: ' + ((e && (e.message || e.name)) || 'error desconocido'));
-  }
-}
-
-function capturarFoto() {
-  const video = $('videoFoto');
-  const canvas = $('canvasFoto');
-  canvas.width = video.videoWidth || 640;
-  canvas.height = video.videoHeight || 480;
-  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-
-  if (streamFoto) { streamFoto.getTracks().forEach(t => t.stop()); streamFoto = null; }
-  $('videoFotoWrap').style.display = 'none';
-  $('fotoSobreWrap').style.display = 'none';
-
-  if (historialSobres.length) {
-    historialSobres[0].foto = dataUrl;
-    renderHistorialSobres();
-  }
-
-  // Por ahora la foto se descarga directo al teléfono (galería/descargas).
-  // Cuando conectemos Google Drive, este mismo punto es donde se sube.
-  const a = document.createElement('a');
-  a.href = dataUrl;
-  a.download = 'sobre_' + (sobreActual.gid || 'sin_gid') + '_' + Date.now() + '.jpg';
-  a.click();
-}
-
-function exportarHistorialSobres() {
-  if (!historialSobres.length) { alert('No hay historial para exportar.'); return; }
-  const headers = ['Hora','GID','Nombre BMS','OBS_UNIT_ID','Disponible','Resultado','Quién','FotoURL'];
-  const rows = [headers.join(',')];
-  historialSobres.forEach(h => {
-    const vals = [h.hora, h.gid, h.nombre, h.obs, h.disponible, h.resultado, h.escaneadoPor, h.foto];
-    rows.push(vals.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(','));
-  });
-  const csv = '\uFEFF' + rows.join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'sobres_escaneados_' + new Date().toISOString().slice(0,10) + '.csv';
-  a.click();
-}
-
-function limpiarHistorialSobres() {
-  historialSobres = [];
-  renderHistorialSobres();
-}
 </script>
 </body>
 </html>
