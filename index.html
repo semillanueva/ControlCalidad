@@ -243,6 +243,7 @@
         <div><label>Columna Nombre / Preferred Name</label><select id="colName"></select></div>
         <div><label>Columna Orden (opcional)</label><select id="colOrden"></select></div>
         <div><label>Columna Hembra/Macho (opcional)</label><select id="colRol"></select></div>
+        <div><label>Columna Peso (opcional)</label><select id="colPeso"></select></div>
       </div>
       <div class="toolbar">
         <button class="btn-load" id="btnProcesar" disabled>Validar contra BMS</button>
@@ -345,7 +346,7 @@
   <div class="table-wrap">
     <table id="reporteTable">
       <thead><tr>
-        <th>Orden</th><th>GID</th><th>Nombre BMS</th><th>Disponible</th><th>Estado Validación EK</th><th>Escaneado en Genbank</th><th>Última hora</th><th>Foto</th>
+        <th>Orden</th><th>GID</th><th>Nombre BMS</th><th>Disponible</th><th>Peso (archivo EK)</th><th>Estado Validación EK</th><th>Escaneado en Genbank</th><th>Última hora</th><th>Foto</th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -1328,7 +1329,8 @@ const HEADER_ALIASES = {
   gid: ['gid'],
   name: ['preferred name', 'preferred_name', 'designation', 'nombre', 'name'],
   orden: ['orden', 'no.', 'no', 'item', '#'],
-  rol: ['hembra/macho', 'hembra', 'macho', 'sexo', 'role', 'parent type', 'tipo']
+  rol: ['hembra/macho', 'hembra', 'macho', 'sexo', 'role', 'parent type', 'tipo'],
+  peso: ['peso', 'weigth', 'peso (g)', 'gramos', 'g']
 };
 
 function detectCol(hdrs, aliases) {
@@ -1373,6 +1375,7 @@ function loadSheet(idx) {
   fillSelect('colName', headers, detectCol(headers, HEADER_ALIASES.name), false);
   fillSelect('colOrden', headers, detectCol(headers, HEADER_ALIASES.orden), true);
   fillSelect('colRol', headers, detectCol(headers, HEADER_ALIASES.rol), true);
+  fillSelect('colPeso', headers, detectCol(headers, HEADER_ALIASES.peso), true);
 
   $('fileStatus').textContent = sheetRows.length + ' filas detectadas en la hoja "' + sheetName + '". Revisa el mapeo de columnas y presiona Validar.';
   $('btnProcesar').disabled = (gidIndex.size === 0 || sheetRows.length === 0);
@@ -1576,6 +1579,7 @@ async function procesarListado() {
   const idxName = parseInt($('colName').value, 10);
   const idxOrden = parseInt($('colOrden').value, 10);
   const idxRol = parseInt($('colRol').value, 10);
+  const idxPeso = parseInt($('colPeso').value,10);
 
   $('btnProcesar').disabled = true;
 
@@ -1600,8 +1604,9 @@ async function procesarListado() {
     const nameRaw = idxName >= 0 ? row[idxName] : '';
     const orden = idxOrden >= 0 ? row[idxOrden] : (i + 1);
     const rol = idxRol >= 0 ? row[idxRol] : '';
+    const pesoArchivo = idxPeso >= 0 ? row[idxPeso] : '';
     const res = evaluarFila(gidRaw, nameRaw);
-    return Object.assign({ orden, rol, gidArchivo: gidRaw, nombreArchivo: nameRaw }, res);
+    return Object.assign({ orden, rol, pesoArchivo, gidArchivo: gidRaw, nombreArchivo: nameRaw }, res);
   });
 
   renderResultadosValidacion();
@@ -1688,6 +1693,7 @@ function generarReporteEKGenbank() {
         gid: r.gidBMS,
         nombre: r.desigBMS,
         disponible: r.disponible,
+        pesoArchivo: r.pesoArchivo || '',
         estadoValidacion: ESTADO_INFO[r.estado].texto,
         veces: e ? e.veces : 0,
         ultimaHora: e ? e.ultimaHora : '',
@@ -1717,6 +1723,7 @@ function renderReporte() {
       '<td class="mono">' + esc(r.gid) + '</td>' +
       '<td>' + esc(r.nombre) + '</td>' +
       '<td>' + esc(r.disponible) + '</td>' +
+      '<td>' + esc(r.pesoArchivo || '-') + '</td>' 
       '<td>' + esc(r.estadoValidacion) + '</td>' +
       '<td>' + (ok ? '<span class="hl-ok">Sí (' + r.veces + ')</span>' : '<span class="hl-bad">No</span>') + '</td>' +
       '<td>' + esc(r.ultimaHora || '-') + '</td>' +
@@ -1735,7 +1742,7 @@ function exportarReporte() {
   const headers = ['Orden', 'GID', 'Nombre BMS', 'Disponible', 'Estado validación EK', 'Escaneado en Genbank', 'Veces', 'Última hora'];
   const rows = [headers.join(',')];
   reportRows.forEach(r => {
-    const vals = [r.orden, r.gid, r.nombre, r.disponible, r.estadoValidacion, r.veces > 0 ? 'Sí' : 'No', r.veces, r.ultimaHora];
+    const vals = [r.orden, r.gid, r.nombre, r.disponible, r.pesoArchivo, r.estadoValidacion, r.veces > 0 ? 'Sí' : 'No', r.veces, r.ultimaHora];
     rows.push(vals.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(','));
   });
   const csv = '\uFEFF' + rows.join('\n');
