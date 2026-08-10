@@ -1180,7 +1180,7 @@ let genbankActual = null;
 let historialGenbank = [];
 let html5QrCodeGenbank = null;
 let streamFotoGenbank = null;
-const URL_RESPALDO_DRIVE_GENBANK ='https://script.google.com/a/macros/semillanueva.org/s/AKfycbwWI8_jBxhM40bxfFV7NnkSkQr_NrsyOnbXltx7Un2opdX-QA1ziyeNG1XvGIZlws2cJQ/exec';
+const URL_RESPALDO_DRIVE_GENBANK ='https://script.google.com/a/macros/semillanueva.org/s/AKfycbyWgli-1Xm1fW7127lb0klTX6IYVjcDu4olzo9Xenbk46z6YW5G1XrXRVWdxf3l9r321g/exec';
 
 $('scanGenbank').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
@@ -1320,7 +1320,7 @@ function capturarFotoGenbank() {
 
 async function respaldaFotoGenbankADrive(dataUrl,registro){
   if (!URL_RESPALDO_DRIVE_GENBANK )return;
-  const nomnbreArchivo  = 'genbank_' + (registro.obs || 'sin_codigo') + '_ ' + Date.now() + '.jpg';
+  const nombreArchivo  = 'genbank_' + (registro.obs || 'sin_codigo') + '_ ' + Date.now() + '.jpg';
   try {
     await fetch(URL_RESPALDO_DRIVE_GENBANK, {
       method: 'POST',
