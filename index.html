@@ -150,6 +150,7 @@
       <label>Catálogo de LOTES (Origen) &mdash; desde BMS</label>
       <div class="toolbar">
         <button class="btn-load" id="btnCargarLotes" onclick="cargarLotesBMS()" disabled>Cargar lotes desde BMS</button>
+        <button class="btn-load" id="btnDEscargarInventario" onclick="descargarInventarioBMS()" disabled>Descargar inventario (Excel)</button>
       </div>
       <div class="file-status" id="statusLotes">Conéctate a BMS primero.</div>
     </div>
@@ -707,6 +708,7 @@ async function cargarLotesBMS() {
       document.getElementById('fileInput').disabled = false;
       document.getElementById('fileStatus').textContent = 'Listo. Sube el archivo Excel del listado crudo.';
       document.getElementById('btnProcesar').disabled = (sheetRows.length === 0);
+      document.getElementById('btnDescargarInventario').disabled = false;
     }
   } catch (e) {
     statusEl.innerHTML = '<span class="hl-bad">Error: ' + e.message + '</span>';
@@ -715,11 +717,33 @@ async function cargarLotesBMS() {
   btn.disabled = false;
 }
 
+let _muestraLoteImpresa = false; // solo para diagnóstico
+
 function indexarLote(rec) {
-  const lotUID = rec.lotUUID || rec.lotUID || rec.stockId || rec.lotId || '';
+  if(!_muestraLoteImpresa) {
+    _muestraLoteImpresa = true;
+    console.log('[Inventario BMS] Ejemplo de lote crudo (revisa el nombre real de la ubicación aquí):',rec);
+  }
+
+  const lotUID = rec.lotUUID  || rec.lotUID || rec.stockId || rec.lotId || '';
   const gid = String(rec.gid || rec.GID || '').trim();
   const desig = rec.designation || rec.germplasmName || '';
-  if (lotUID) lotIndex.set(String(lotUID).toUpperCase(), { lotUID: String(lotUID), gid, desig });
+  
+  // peso actual: mismo campo que ya usamos para disponible ene el resto de la app
+  const pesoNum = Number(rec.availableBalance ?? rec.actualBalance ?? rec.amount);
+
+  //ubicación: No confirmado todacvía contra este BMS. Si sale vacía en el campo 
+  //Excel, revisa el console.log arriba 
+  const Ubicacion = rec.locationName || rec.locationAbbrevation ||
+    (rec.storageLocation && (rec.storageLocation.locationName || rec.storageLocation.name)) ||
+    rec.location || '';
+
+  if (lotUID) lotIndex.set(String(lotUID).toUpperCase(),{
+    lotUID: String(lotUID), gid, desig,
+    peso: isNaN(pesoNum) ? '' : pesoNum,
+    ubicacion
+  });
+
   if (gid) {
     let e = gidIndex.get(gid);
     if (!e) {
@@ -735,6 +759,36 @@ function indexarLote(rec) {
     if (rec.status && String(rec.status).toUpperCase() !== 'CLOSED') e.anyOpen = true;
   }
 }
+
+function descargarInventarioBMS(){
+  if(!lotIndex.size) { alert('Primero Carga el catálogo de lotes desde BMS'); return; }
+
+  //GID -> LISTA de OBS_UNIT_ID armada desde el vivero cargado si hay
+  const gidToObs = new Map();
+  viveroIndex.forEach(v => {
+    if(!v.gid) return;
+    if(!gidToObs.has(v.gid)) gidToObs.set(v.gid, []);
+    gidToObs.get(v.gid).push(v.obs);
+  });
+
+  const filas = [];
+  lotIndex.forEach(lot => {
+    const obsList = gidToObs.get(lot.gid) || [];
+    filas.push({
+      GID: lot.gid,
+      OBS_UNIT_ID: obsList.join(', '),
+      'Peso Actual': lot.peso,
+      'Ubicación': lot.ubicacion
+    });
+  });
+
+  const ws = XLSX.utils.json_to_sheet(filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Inventario BMS');
+  XLSX.writeFile(wb, 'inventario_bms_' + new Date().toISOString().slice(0,10) + '.xlsx');
+}
+
+
 
 /* =========================================================================
    2) VIVERO (Study) -> OBS_UNIT_ID -> GID, DESIGNATION, ENTRY, PLOT
@@ -1180,7 +1234,7 @@ let genbankActual = null;
 let historialGenbank = [];
 let html5QrCodeGenbank = null;
 let streamFotoGenbank = null;
-const URL_RESPALDO_DRIVE_GENBANK ='https://script.google.com/a/macros/semillanueva.org/s/AKfycbyWgli-1Xm1fW7127lb0klTX6IYVjcDu4olzo9Xenbk46z6YW5G1XrXRVWdxf3l9r321g/exec';
+const URL_RESPALDO_DRIVE_GENBANK = 'https://script.google.com/macros/s/AKfycbyWgli-1Xm1fW7127lb0klTX6IYVjcDu4olzo9Xenbk46z6YW5G1XrXRVWdxf3l9r321g/exec';
 
 $('scanGenbank').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
@@ -1324,10 +1378,10 @@ async function respaldaFotoGenbankADrive(dataUrl,registro){
   try {
     await fetch(URL_RESPALDO_DRIVE_GENBANK, {
       method: 'POST',
-      body: JSON.stringify({ imagen: dataUrl, nombreArchivo: nombreArchivo })
+      body: JSON.stringify({ imagen: dataUrl, nombreArchivo: nombreArchivoc })   // <-- aquí
     });
   } catch (e) {
-    console.warn('No se pudo respoladar la foto en Drive:', e);
+    console.warn('No se pudo respaldar la foto en Drive:', e);
   }
 }
 
