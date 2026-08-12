@@ -245,6 +245,7 @@
         <div><label>Columna Orden (opcional)</label><select id="colOrden"></select></div>
         <div><label>Columna Hembra/Macho (opcional)</label><select id="colRol"></select></div>
         <div><label>Columna Peso (opcional)</label><select id="colPeso"></select></div>
+        <div><label>Columna Ubicación (opcional)</label><select id="colUbicacion"></select></div>
       </div>
       <div class="toolbar">
         <button class="btn-load" id="btnProcesar" disabled>Validar contra BMS</button>
@@ -347,7 +348,7 @@
   <div class="table-wrap">
     <table id="reporteTable">
       <thead><tr>
-        <th>Orden</th><th>GID</th><th>Nombre BMS</th><th>Disponible</th><th>Peso (archivo EK)</th><th>Estado Validación EK</th><th>Escaneado en Genbank</th><th>Última hora</th><th>Foto</th>
+        <th>Orden</th><th>GID</th><th>Nombre BMS</th><th>Disponible</th><th>Peso (archivo EK)</th><th>Ubicación (archivo EK)</th><th>Estado Validación EK</th><th>Escaneado en Genbank</th><th>Última hora</th><th>Foto</th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -1399,7 +1400,8 @@ const HEADER_ALIASES = {
   name: ['preferred name', 'preferred_name', 'designation', 'nombre', 'name'],
   orden: ['orden', 'no.', 'no', 'item', '#'],
   rol: ['hembra/macho', 'hembra', 'macho', 'sexo', 'role', 'parent type', 'tipo'],
-  peso: ['peso', 'weigth', 'peso (g)', 'gramos', 'g']
+  peso: ['peso', 'weigth', 'peso (g)', 'gramos', 'g'],
+  ubicacion: ['ubicación', 'ubicacion', 'location', 'lugar', 'locaclización', 'localizacion']
 };
 
 function detectCol(hdrs, aliases) {
@@ -1445,6 +1447,7 @@ function loadSheet(idx) {
   fillSelect('colOrden', headers, detectCol(headers, HEADER_ALIASES.orden), true);
   fillSelect('colRol', headers, detectCol(headers, HEADER_ALIASES.rol), true);
   fillSelect('colPeso', headers, detectCol(headers, HEADER_ALIASES.peso), true);
+  fillSelect('colUbicacion', headers, detectCol(headers, HEADER_ALIASES.ubicacion), true);
 
   $('fileStatus').textContent = sheetRows.length + ' filas detectadas en la hoja "' + sheetName + '". Revisa el mapeo de columnas y presiona Validar.';
   $('btnProcesar').disabled = (gidIndex.size === 0 || sheetRows.length === 0);
@@ -1649,6 +1652,7 @@ async function procesarListado() {
   const idxOrden = parseInt($('colOrden').value, 10);
   const idxRol = parseInt($('colRol').value, 10);
   const idxPeso = parseInt($('colPeso').value,10);
+  const idxUbicacion = parseInt($('colUbicacion').value,10);
 
   $('btnProcesar').disabled = true;
 
@@ -1674,8 +1678,9 @@ async function procesarListado() {
     const orden = idxOrden >= 0 ? row[idxOrden] : (i + 1);
     const rol = idxRol >= 0 ? row[idxRol] : '';
     const pesoArchivo = idxPeso >= 0 ? row[idxPeso] : '';
+    const ubicacionArchivo = idxUbicacion >= 0 ? row[idxUbicacion] : '';
     const res = evaluarFila(gidRaw, nameRaw);
-    return Object.assign({ orden, rol, pesoArchivo, gidArchivo: gidRaw, nombreArchivo: nameRaw }, res);
+    return Object.assign({ orden, rol, pesoArchivo, ubicacionArchivo, gidArchivo: gidRaw, nombreArchivo: nameRaw }, res);
   });
 
   renderResultadosValidacion();
@@ -1763,6 +1768,7 @@ function generarReporteEKGenbank() {
         nombre: r.desigBMS,
         disponible: r.disponible,
         pesoArchivo: r.pesoArchivo || '',
+        ubicacionArchivo: r.ubicacionArchivo || '',
         estadoValidacion: ESTADO_INFO[r.estado].texto,
         veces: e ? e.veces : 0,
         ultimaHora: e ? e.ultimaHora : '',
@@ -1792,7 +1798,7 @@ function renderReporte() {
       '<td class="mono">' + esc(r.gid) + '</td>' +
       '<td>' + esc(r.nombre) + '</td>' +
       '<td>' + esc(r.disponible) + '</td>' +
-      '<td>' + esc(r.pesoArchivo || '-') + '</td>' 
+      '<td>' + esc(r.pesoArchivo || '-') + '</td>' +
       '<td>' + esc(r.estadoValidacion) + '</td>' +
       '<td>' + (ok ? '<span class="hl-ok">Sí (' + r.veces + ')</span>' : '<span class="hl-bad">No</span>') + '</td>' +
       '<td>' + esc(r.ultimaHora || '-') + '</td>' +
@@ -1808,10 +1814,10 @@ function renderReporte() {
 
 function exportarReporte() {
   if (!reportRows.length) { alert('No hay reporte generado.'); return; }
-  const headers = ['Orden', 'GID', 'Nombre BMS', 'Disponible', 'Estado validación EK', 'Escaneado en Genbank', 'Veces', 'Última hora'];
+  const headers = ['Orden', 'GID', 'Nombre BMS', 'Disponible', 'Peso (archivo EK)', 'Ubicación (archivo EK)', 'Estado validación EK', 'Escaneado en Genbank', 'Veces', 'Última hora'];
   const rows = [headers.join(',')];
   reportRows.forEach(r => {
-    const vals = [r.orden, r.gid, r.nombre, r.disponible, r.pesoArchivo, r.estadoValidacion, r.veces > 0 ? 'Sí' : 'No', r.veces, r.ultimaHora];
+    const vals = [r.orden, r.gid, r.nombre, r.disponible, r.pesoArchivo, r.ubicacionArchivo, r.estadoValidacion, r.veces > 0 ? 'Sí' : 'No', r.veces, r.ultimaHora];
     rows.push(vals.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(','));
   });
   const csv = '\uFEFF' + rows.join('\n');
