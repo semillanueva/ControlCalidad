@@ -734,7 +734,7 @@ function indexarLote(rec) {
 
   //ubicación: No confirmado todacvía contra este BMS. Si sale vacía en el campo 
   //Excel, revisa el console.log arriba 
-  const Ubicacion = rec.locationName || rec.locationAbbrevation ||
+  const ubicacion = rec.locationName || rec.locationAbbrevation ||
     (rec.storageLocation && (rec.storageLocation.locationName || rec.storageLocation.name)) ||
     rec.location || '';
 
