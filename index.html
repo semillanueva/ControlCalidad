@@ -1587,6 +1587,25 @@ function evaluarFila(gidRaw, nameRaw) {
       return { estado: av.estado, gidBMS: gid, desigBMS: entry.desigOriginal, disponible: disponibilidadTexto(entry), detalle: av.detalle };
     }
 
+    // Ejecuta tarea para cada elemento de items, con un máximo de limite
+    //peticiones en vuelo al mismo tiempo (en vez de una por una en serie)
+    async function conConcurrencia(items, limte, tarea, onProgreso) {
+      let indice = 0;
+      let completados = 0;
+      const total = items.length;
+
+      async function trabajador() {
+        while (indice < total){
+          const miIndice = indice++;
+          await tarea(items[miIndice]);
+          completados++;
+          if (onProgreso) onProgreso(completados, total);
+        }
+      }
+
+      const trabajadores = Array.from({ length: Math.min(limete, total)}, () => trabajador());
+      await Promise.all(trabajador);
+    }
     // Candidatos de nombre para este GID: el de lots/search (normalmente
     // LNAME) + los que trajo /germplasm/{gid} (CRSNM, LNAME, etc.),
     // deduplicados por valor.
@@ -1664,12 +1683,9 @@ async function procesarListado() {
     return String(raw == null ? '' : raw).trim().replace(/\.0$/, '');
   }).filter(Boolean))];
 
-  let hechos = 0;
-  for (const gid of gidsUnicos) {
-    $('procesarStatus').innerHTML = '<span class="spinner-inline"></span> Consultando nombres alternos en BMS... ' + hechos + '/' + gidsUnicos.length;
-    await obtenerNombresGermplasma(gid);
-    hechos++;
-  }
+  await conConcurrencia(gidsUnicos, 15, gid => obtenerNombresGermplasma(gid), (hechos, total) => {
+    $('procesarStatus').innerHTML = '<span class="spinner-inline"></span> Consultando nombres alternos en BMS... ' + hechos + '/' + total;
+  });
 
   // Paso 2: evaluar cada fila ya con los nombres alternos en caché
   ultimosResultados = sheetRows.map((row, i) => {
