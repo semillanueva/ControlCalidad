@@ -1379,7 +1379,7 @@ async function respaldaFotoGenbankADrive(dataUrl,registro){
   try {
     await fetch(URL_RESPALDO_DRIVE_GENBANK, {
       method: 'POST',
-      body: JSON.stringify({ imagen: dataUrl, nombreArchivo: nombreArchivoc })   // <-- aquí
+      body: JSON.stringify({ imagen: dataUrl, nombreArchivo: nombreArchivo })
     });
   } catch (e) {
     console.warn('No se pudo respaldar la foto en Drive:', e);
@@ -1587,25 +1587,7 @@ function evaluarFila(gidRaw, nameRaw) {
       return { estado: av.estado, gidBMS: gid, desigBMS: entry.desigOriginal, disponible: disponibilidadTexto(entry), detalle: av.detalle };
     }
 
-    // Ejecuta tarea para cada elemento de items, con un máximo de limite
-    //peticiones en vuelo al mismo tiempo (en vez de una por una en serie)
-    async function conConcurrencia(items, limte, tarea, onProgreso) {
-      let indice = 0;
-      let completados = 0;
-      const total = items.length;
 
-      async function trabajador() {
-        while (indice < total){
-          const miIndice = indice++;
-          await tarea(items[miIndice]);
-          completados++;
-          if (onProgreso) onProgreso(completados, total);
-        }
-      }
-
-      const trabajadores = Array.from({ length: Math.min(limete, total)}, () => trabajador());
-      await Promise.all(trabajador);
-    }
     // Candidatos de nombre para este GID: el de lots/search (normalmente
     // LNAME) + los que trajo /germplasm/{gid} (CRSNM, LNAME, etc.),
     // deduplicados por valor.
@@ -1662,6 +1644,26 @@ const ESTADO_INFO = {
   nombre_no_encontrado:   { tag: 'bad',  texto: 'No encontrado' },
   fila_invalida:          { tag: 'gray', texto: 'Fila inválida' }
 };
+
+// Ejecuta `tarea` para cada elemento de `items`, con un máximo de `limite`
+// peticiones en vuelo al mismo tiempo (en vez de una por una en serie).
+async function conConcurrencia(items, limite, tarea, onProgreso) {
+  let indice = 0;
+  let completados = 0;
+  const total = items.length;
+
+  async function trabajador() {
+    while (indice < total) {
+      const miIndice = indice++;
+      await tarea(items[miIndice]);
+      completados++;
+      if (onProgreso) onProgreso(completados, total);
+    }
+  }
+
+  const trabajadores = Array.from({ length: Math.min(limite, total) }, () => trabajador());
+  await Promise.all(trabajadores);
+}
 
 let ultimosResultados = [];
 
@@ -1815,6 +1817,7 @@ function renderReporte() {
       '<td>' + esc(r.nombre) + '</td>' +
       '<td>' + esc(r.disponible) + '</td>' +
       '<td>' + esc(r.pesoArchivo || '-') + '</td>' +
+      '<td>' + esc(r.ubicacionArchivo || '-') + '</td>' +
       '<td>' + esc(r.estadoValidacion) + '</td>' +
       '<td>' + (ok ? '<span class="hl-ok">Sí (' + r.veces + ')</span>' : '<span class="hl-bad">No</span>') + '</td>' +
       '<td>' + esc(r.ultimaHora || '-') + '</td>' +
