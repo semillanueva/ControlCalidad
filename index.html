@@ -764,20 +764,11 @@ function indexarLote(rec) {
 function descargarInventarioBMS(){
   if(!lotIndex.size) { alert('Primero Carga el catálogo de lotes desde BMS'); return; }
 
-  //GID -> LISTA de OBS_UNIT_ID armada desde el vivero cargado si hay
-  const gidToObs = new Map();
-  viveroIndex.forEach(v => {
-    if(!v.gid) return;
-    if(!gidToObs.has(v.gid)) gidToObs.set(v.gid, []);
-    gidToObs.get(v.gid).push(v.obs);
-  });
-
   const filas = [];
   lotIndex.forEach(lot => {
-    const obsList = gidToObs.get(lot.gid) || [];
     filas.push({
       GID: lot.gid,
-      OBS_UNIT_ID: obsList.join(', '),
+      LNAME: lot.desig,
       'Peso Actual': lot.peso,
       'Ubicación': lot.ubicacion
     });
