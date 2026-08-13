@@ -739,10 +739,16 @@ function indexarLote(rec) {
     (rec.storageLocation && (rec.storageLocation.locationName || rec.storageLocation.name)) ||
     rec.location || '';
 
+  // Unidad de medida (ej. "g", "kg"): tampoco confirmado todavía. Mismo
+  // trato -- si sale vacía en el Excel, revisa el console.log de arriba.
+  const unidad = rec.unitName || (rec.unit && (rec.unit.name || rec.unit.unitName)) ||
+    rec.unitAbbreviation || rec.unidad || '';
+
   if (lotUID) lotIndex.set(String(lotUID).toUpperCase(),{
     lotUID: String(lotUID), gid, desig,
     peso: isNaN(pesoNum) ? '' : pesoNum,
-    ubicacion
+    ubicacion,
+    unidad
   });
 
   if (gid) {
@@ -770,6 +776,7 @@ function descargarInventarioBMS(){
       GID: lot.gid,
       LNAME: lot.desig,
       'Peso Actual': lot.peso,
+      'Unidad': lot.unidad,
       'Ubicación': lot.ubicacion
     });
   });
