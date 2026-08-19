@@ -759,10 +759,13 @@ function indexarLote(rec) {
       gidIndex.set(gid, e);
     }
     e.lotCount++;
-    // Disponibilidad: sumamos el saldo disponible de todos los lotes de este
+        // Disponibilidad: sumamos el saldo disponible de todos los lotes de este
     // GID y marcamos si al menos uno está abierto (status !== CLOSED).
     const avail = Number(rec.availableBalance);
     if (!isNaN(avail)) e.totalAvailable += avail;
+    // Solo contamos como "lote" los que sí tienen semilla disponible -- un
+    // lote vacío o cerrado no debería inflar el "(en N lotes)" que ve AR.
+    if (!isNaN(avail) && avail > 0) e.lotCount++;
     if (rec.status && String(rec.status).toUpperCase() !== 'CLOSED') e.anyOpen = true;
   }
 }
@@ -1774,23 +1777,47 @@ function generarReporteEKGenbank() {
     if (h.foto) e.fotos.push(h.foto);
   });
 
-  reportRows = ultimosResultados
+    // Agrupamos por GID: si el archivo trae el mismo material repartido en
+  // varias filas (una por lote/sobre), aquí se une en UNA sola fila del
+  // reporte -- sumando el peso y juntando las ubicaciones, en vez de
+  // repetir la fila una vez por cada lote.
+  const porGid = new Map();
+  ultimosResultados
     .filter(r => r.gidBMS)
-    .map(r => {
-      const e = escaneosPorGid.get(r.gidBMS);
-      return {
-        orden: r.orden,
-        gid: r.gidBMS,
-        nombre: r.desigBMS,
-        disponible: r.disponible,
-        pesoArchivo: r.pesoArchivo || '',
-        ubicacionArchivo: r.ubicacionArchivo || '',
-        estadoValidacion: ESTADO_INFO[r.estado].texto,
-        veces: e ? e.veces : 0,
-        ultimaHora: e ? e.ultimaHora : '',
-        fotos: e ? e.fotos : []
-      };
+    .forEach(r => {
+      let g = porGid.get(r.gidBMS);
+      if (!g) {
+        g = {
+          orden: r.orden,
+          gid: r.gidBMS,
+          nombre: r.desigBMS,
+          disponible: r.disponible,
+          pesoArchivo: 0,
+          ubicaciones: new Set(),
+          estadoValidacion: ESTADO_INFO[r.estado].texto
+        };
+        porGid.set(r.gidBMS, g);
+      }
+      const p = Number(r.pesoArchivo);
+      if (!isNaN(p)) g.pesoArchivo += p;
+      if (r.ubicacionArchivo) g.ubicaciones.add(r.ubicacionArchivo);
     });
+
+  reportRows = Array.from(porGid.values()).map(g => {
+    const e = escaneosPorGid.get(g.gid);
+    return {
+      orden: g.orden,
+      gid: g.gid,
+      nombre: g.nombre,
+      disponible: g.disponible,
+      pesoArchivo: g.pesoArchivo || '',
+      ubicacionArchivo: Array.from(g.ubicaciones).join(' / '),
+      estadoValidacion: g.estadoValidacion,
+      veces: e ? e.veces : 0,
+      ultimaHora: e ? e.ultimaHora : '',
+      fotos: e ? e.fotos : []
+    };
+  });
 
   $('statusReporte').textContent = '';
   renderReporte();
