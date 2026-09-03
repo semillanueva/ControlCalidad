@@ -345,7 +345,7 @@
     <span class="file-status" id="statusReporte"></span>
   </div>
   <div class="summary" id="summaryReporte" style="display:none;">
-    <div class="box total"><span class="n" id="sTotalReporte">0</span><span class="label">Solicitado por EK</span></div>
+    <div class="box total"><span class="n" id="sTotalReporte">0</span><span class="label">GID's Únicos</span></div>
     <div class="box ok"><span class="n" id="sEscaneadoReporte">0</span><span class="label">Escaneado en Genbank</span></div>
     <div class="box bad"><span class="n" id="sPendienteReporte">0</span><span class="label">Pendiente</span></div>
   </div>
@@ -355,7 +355,7 @@
   <div class="table-wrap">
     <table id="reporteTable">
       <thead><tr>
-      <th>Orden</th><th>GID</th><th>Nombre BMS</th><th>Disponible</th><th>Ubicación (BMS)</th><th>GID (Listado Oficial)</th><th>Ubicación (Listado Oficial)</th><th>Estado Validación EK</th><th>Escaneado en Genbank</th><th>Última hora</th><th>Foto</th>
+      <th>Orden</th><th>GID</th><th>Nombre BMS</th><th>Disponible</th><th>Ubicación (BMS)</th><th>GID (Listado Oficial)</th><th>Ubicación (Listado Oficial)</th><th>Estado Validación</th><th>Escaneado en Genbank</th><th>Última hora</th><th>Foto</th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -1544,22 +1544,59 @@ function fillSelect(selectId, hdrs, guessIdx, optional) {
   sel.value = String(guessIdx >= 0 ? guessIdx : (optional ? -1 : 0));
 }
 
+
+function detectHeaderRowIdx(rows) {
+  const maxScan = Math.min(rows.length, 40);
+  let bestIdx = 0, bestScore = -1;
+  for (let r = 0; r < maxScan; r++) {
+    const hdrs = (rows[r] || []).map(h => normLoose(h));
+    if (hdrs.every(h => h === '')) continue;
+    let score = 0;
+    if (hdrs.some(h => h === normLoose('gid'))) score += 3;
+    for (const alias of HEADER_ALIASES.name) if (hdrs.some(h => h.includes(normLoose(alias)))) { score += 1; break; }
+    for (const alias of HEADER_ALIASES.orden) if (hdrs.some(h => h === normLoose(alias) || h.includes(normLoose(alias)))) { score += 1; break; }
+    for (const alias of HEADER_ALIASES.rol) if (hdrs.some(h => h.includes(normLoose(alias)))) { score += 1; break; }
+    if (score > bestScore) { bestScore = score; bestIdx = r; }
+  }
+  return bestScore > 0 ? bestIdx : 0;
+}
+
 function loadSheet(idx) {
   const sheetName = workbook.SheetNames[idx];
   const ws = workbook.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
-  headers = (rows[0] || []).map(h => String(h || '').trim());
-  sheetRows = rows.slice(1).filter(r => r.some(c => String(c).trim() !== ''));
+
+  const headerRowIdx = detectHeaderRowIdx(rows);
+  headers = (rows[headerRowIdx] || []).map(h => String(h || '').trim());
+
+  const guessGid = detectCol(headers, HEADER_ALIASES.gid);
+  const guessName = detectCol(headers, HEADER_ALIASES.name);
+
+  // Cortamos en la primera fila sin GID ni Nombre: así ignoramos filas de
+  // plantilla pre-numeradas sin llenar y cualquier bloque de firma/leyenda
+  // que venga después del listado real.
+  const dataRows = rows.slice(headerRowIdx + 1);
+  if (guessGid >= 0 || guessName >= 0) {
+    sheetRows = [];
+    for (const r of dataRows) {
+      const gidVal = guessGid >= 0 ? String(r[guessGid] || '').trim() : '';
+      const nameVal = guessName >= 0 ? String(r[guessName] || '').trim() : '';
+      if (!gidVal && !nameVal) break;
+      sheetRows.push(r);
+    }
+  } else {
+    sheetRows = dataRows.filter(r => r.some(c => String(c).trim() !== ''));
+  }
 
   $('mapGrid').style.display = 'grid';
-  fillSelect('colGid', headers, detectCol(headers, HEADER_ALIASES.gid), false);
-  fillSelect('colName', headers, detectCol(headers, HEADER_ALIASES.name), false);
+  fillSelect('colGid', headers, guessGid, false);
+  fillSelect('colName', headers, guessName, false);
   fillSelect('colOrden', headers, detectCol(headers, HEADER_ALIASES.orden), true);
   fillSelect('colRol', headers, detectCol(headers, HEADER_ALIASES.rol), true);
   fillSelect('colPeso', headers, detectCol(headers, HEADER_ALIASES.peso), true);
   fillSelect('colUbicacion', headers, detectCol(headers, HEADER_ALIASES.ubicacion), true);
 
-  $('fileStatus').textContent = sheetRows.length + ' filas detectadas en la hoja "' + sheetName + '". Revisa el mapeo de columnas y presiona Validar.';
+  $('fileStatus').textContent = sheetRows.length + ' filas detectadas en la hoja "' + sheetName + '" (encabezados en la fila ' + (headerRowIdx + 1) + '). Revisa el mapeo de columnas y presiona Validar.';
   $('btnProcesar').disabled = (gidIndex.size === 0 || sheetRows.length === 0);
 }
 
@@ -1985,7 +2022,7 @@ function renderReporte() {
 
 function exportarReporte() {
   if (!reportRows.length) { alert('No hay reporte generado.'); return; }
-  const headers = ['Orden', 'GID', 'Nombre BMS', 'Disponible', 'Ubicación (BMS)', 'GID (Listado Oficial)', 'Ubicación (Listado Oficial)', 'Estado validación EK', 'Escaneado en Genbank', 'Veces', 'Última hora'];
+  const headers = ['Orden', 'GID', 'Nombre BMS', 'Disponible', 'Ubicación (BMS)', 'GID (Listado Oficial)', 'Ubicación (Listado Oficial)', 'Estado validación', 'Escaneado en Genbank', 'Veces', 'Última hora'];
   const rows = [headers.join(',')];
   reportRows.forEach(r => {
     const vals = [r.orden, r.gid, r.nombre, r.disponible, r.ubicacionBMS, r.pesoArchivo, r.ubicacionArchivo, r.estadoValidacion, r.veces > 0 ? 'Sí' : 'No', r.veces, r.ultimaHora];
@@ -2146,29 +2183,41 @@ function extraerEstudioCampo(rows) {
 // que en algunos libros (ej. Backcross) la cuadrícula viene corrida una
 // columna a la derecha -- y arma la lista de celdas entre el primer y el
 // último encabezado encontrado.
+function pareceEncabezadoGridCampo(v) {
+  const t = normLoose(v);
+  if (t === 'ROWS' || t === 'SURCOS') return true;
+  // Encabezado tipo "Faja \ Surco" / "Surco \ Faja" / "Faja / Surco" --
+  // visto en mapas FIELD MAP de un solo Environment (formato "serpentín").
+  if (/^(FAJA|SURCO|ROW)S?\s*[\\/]\s*(FAJA|SURCO|ROW)S?$/.test(t)) return true;
+  return false;
+}
+
 function parseGridMapaCampo(rows) {
   let headerCol = -1;
   const headerIdxs = [];
   rows.forEach((row, i) => {
     if (!row) return;
     for (let c = 0; c < row.length; c++) {
-      const v = String(row[c] ?? '').trim().toLowerCase();
-      if (v === 'rows' || v === 'surcos') {
+      if (pareceEncabezadoGridCampo(row[c])) {
         headerIdxs.push(i);
         if (headerCol === -1) headerCol = c;
         return;
       }
     }
   });
-  if (headerIdxs.length < 2 || headerCol === -1) return null;
+  if (!headerIdxs.length || headerCol === -1) return null;
 
   const inicio = headerIdxs[0];
-  const fin = headerIdxs[headerIdxs.length - 1];
+  // Si el encabezado solo aparece una vez (mapas pequeños, 1 Faja), no hay
+  // fila de cierre que lo repita -- tomamos hasta el final de la hoja.
+  const fin = headerIdxs.length > 1 ? headerIdxs[headerIdxs.length - 1] : rows.length;
   const headerRow = rows[inicio] || [];
   const columnas = [];
   for (let c = headerCol + 1; c < headerRow.length; c++) {
-    const v = headerRow[c];
-    if (v !== '' && v != null && !isNaN(Number(v))) columnas.push(c);
+    const v = String(headerRow[c] ?? '').trim();
+    // Acepta encabezados numéricos puros ("1","2"...) y con sufijo de
+    // dirección serpentina ("1 UP", "2 DOWN"...).
+    if (v !== '' && /^\d+/.test(v)) columnas.push(c);
   }
   if (!columnas.length) return null;
 
@@ -2183,7 +2232,6 @@ function parseGridMapaCampo(rows) {
 
   return { numColumnas: columnas.length, filas };
 }
-
 
 function expandirCeldasFusionadas(ws, rows) {
   const merges = (ws && ws['!merges']) || [];
