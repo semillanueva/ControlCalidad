@@ -123,6 +123,12 @@
   .tag.warn { background:var(--amber); }
   .tag.bad { background:var(--bad); }
   .tag.gray { background:var(--gray); }
+
+  /* ===== Verificación Campo ===== */
+  .cell-campo { text-align:center; font-size:.72rem; line-height:1.5; border:1px solid var(--line); white-space:nowrap; }
+  .cell-campo.pendiente { background:#eef0f2; }
+  .cell-campo.ok { background:var(--okbg); }
+  .cell-campo.alerta { background:var(--badbg); }
 </style>
 </head>
 <body>
@@ -157,13 +163,14 @@
   </div>
 
   <div class="tab-bar">
-    <button class="tab-btn active" id="tabBtnEscaneo" onclick="showTab('escaneo')">Escaneo Lote &harr; Vivero</button>
-    <button class="tab-btn" id="tabBtnValidacion" onclick="showTab('validacion')">Validar Listado Crudo</button>
+    <button class="tab-btn active" id="tabBtnValidacion" onclick="showTab('validacion')">Cargar Listado Oficial</button>
     <button class="tab-btn" id="tabBtnGenbank" onclick="showTab('genbank')">Genbank &mdash; Verificación</button>
-    <button class="tab-btn" id="tabBtnReporte" onclick="showTab('reporte')">Reporte EK &harr; Genbank</button>
+    <button class="tab-btn" id="tabBtnReporte" onclick="showTab('reporte')">Reporte Genbank</button>
+    <button class="tab-btn" id="tabBtnEscaneo" onclick="showTab('escaneo')">Origen vs Experimento</button>
+    <button class="tab-btn" id="tabBtnCampo" onclick="showTab('campo')">Verificación Mapa Campo</button>
   </div>
 
-  <div id="tabEscaneo">
+  <div id="tabEscaneo" style="display:none">
   <div class="loaders">
     <div>
       <label>Vivero (Study) &mdash; OBS_UNIT_ID desde BMS</label>
@@ -227,7 +234,7 @@
   </table>
   </div> <!-- /tabEscaneo -->
 
-  <div id="tabValidacion" style="display:none">
+    <div id="tabValidacion">
     <p style="font-size:.85rem;color:#666;margin:0 0 10px">Sube el listado crudo (con GID y/o Preferred Name) y valida contra el catálogo de lotes ya cargado arriba &mdash; no vuelve a consultar BMS, usa el mismo catálogo en memoria.</p>
 
     <div class="conn-card">
@@ -264,11 +271,11 @@
       <button class="act" id="btnExportValidacion" disabled>Exportar resultado (CSV)</button>
     </div>
     <div class="table-wrap">
-      <table id="resultTable">
+        <table id="resultTable">
         <thead>
           <tr>
             <th>Orden</th><th>Rol</th><th>GID (archivo)</th><th>Nombre (archivo)</th>
-            <th>GID en BMS</th><th>Designation en BMS</th><th>Disponible</th><th>Estado</th><th>Detalle</th>
+            <th>GID en BMS</th><th>Designation en BMS</th><th>Disponible</th><th>Ubicación</th><th>Año</th><th>Estado</th><th>Detalle</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -284,7 +291,7 @@
 
   <div class="scan-row">
     <div class="scan-box" style="max-width:420px">
-      <label>Escanear sticker (OBS_UNIT_ID)</label>
+      <label>Escanear sticker (LOT UID)</label>
       <input type="text" id="scanGenbank" placeholder="Carga el cátalogo de lotes primero" autocomplete="off" disabled>
       <div class="sub" id="subGenbank"></div>
     </div>
@@ -300,7 +307,7 @@
     <div>
       <h3>Material escaneado</h3>
       <div class="kv" id="kvGenbank">
-        <b>OBS UNIT ID</b><span>&mdash;</span>
+        <b>LOT UID</b><span>&mdash;</span>
         <b>GID</b><span>&mdash;</span>
         <b>DESIGNATION</b><span>&mdash;</span>
         <b>PLOT_IN_TRIAL</b><span>&mdash;</span>
@@ -323,7 +330,7 @@
   </div>
   <table id="histGenbankTable">
     <thead><tr>
-      <th>Hora</th><th>OBS_UNIT_ID</th><th>GID</th><th>DESIGNATION</th><th>Disponible</th><th>Foto</th>
+      <th>Hora</th><th>LOT UID</th><th>GID</th><th>DESIGNATION</th><th>Disponible</th><th>Foto</th>
     </tr></thead>
     <tbody></tbody>
   </table>
@@ -348,12 +355,72 @@
   <div class="table-wrap">
     <table id="reporteTable">
       <thead><tr>
-        <th>Orden</th><th>GID</th><th>Nombre BMS</th><th>Disponible</th><th>Peso (archivo EK)</th><th>Ubicación (archivo EK)</th><th>Estado Validación EK</th><th>Escaneado en Genbank</th><th>Última hora</th><th>Foto</th>
+      <th>Orden</th><th>GID</th><th>Nombre BMS</th><th>Disponible</th><th>Ubicación (BMS)</th><th>GID (Listado Oficial)</th><th>Ubicación (Listado Oficial)</th><th>Estado Validación EK</th><th>Escaneado en Genbank</th><th>Última hora</th><th>Foto</th>
       </tr></thead>
       <tbody></tbody>
     </table>
   </div>
 </div> <!--/tabReporte-->
+
+<div id="tabCampo" style="display:none">
+  <p style="font-size:.85rem;color:#666;margin:0 0 10px">
+    Verificación de seguridad en laboratorio: sube el mapa de siembra (Excel) y escanea los sobres en el mismo orden del mapa para confirmar que coincide Plot/Entry(/GID) y que no falta ni se saltó ningún sobre. El mapa sale del Excel; el OBS_UNIT_ID de cada Plot se resuelve conectando a BMS por localidad.
+  </p>
+
+  <div class="conn-card">
+    <div class="upload-row">
+      <input type="file" id="fileInputCampo" accept=".xlsx,.xls">
+      <span class="file-status" id="fileStatusCampo">Sube el archivo del mapa (Backcross/Self, Finca, Registro, Screening o Parent Testing).</span>
+    </div>
+    <div id="localidadWrapCampo" style="display:none; margin-top:10px;">
+      <label style="font-size:.78rem; font-weight:600;">Localidad / Hoja:</label>
+      <select id="localidadPickerCampo" style="padding:6px; border-radius:6px; border:1px solid var(--line);"></select>
+      <button class="btn-load" id="btnCargarLocalidadCampo" style="margin-left:8px;">Cargar mapa de esta localidad</button>
+    </div>
+  </div>
+
+  <div id="infoMapaCampo" style="display:none; margin:10px 0;">
+    <div class="kv">
+      <b>Estudio</b><span id="infoEstudioCampo">&mdash;</span>
+      <b>Localidad</b><span id="infoLocalidadCampo">&mdash;</span>
+      <b>Tipo</b><span id="infoTipoCampo">&mdash;</span>
+      <b>Total de Plots</b><span id="infoTotalCampo">&mdash;</span>
+    </div>
+  </div>
+
+  <div class="scan-row">
+    <div class="scan-box" style="max-width:420px">
+      <label>Escanear sobre (OBS UNIT ID)</label>
+      <input type="text" id="scanCampo" placeholder="Carga un mapa primero" autocomplete="off" disabled>
+      <div class="sub" id="subCampo"></div>
+    </div>
+  </div>
+
+  <div class="verdict" id="verdictCampo">Cargue un mapa para comenzar la verificación</div>
+
+  <div class="summary" id="summaryCampo" style="display:none;">
+    <div class="box total"><span class="n" id="sTotalCampo">0</span><span class="label">Total Plots</span></div>
+    <div class="box ok"><span class="n" id="sOkCampo">0</span><span class="label">OK</span></div>
+    <div class="box warn"><span class="n" id="sPendCampo">0</span><span class="label">Pendientes</span></div>
+    <div class="box bad"><span class="n" id="sAlertCampo">0</span><span class="label">Alertas</span></div>
+  </div>
+
+  <div class="toolbar">
+    <button class="act" id="btnReiniciarCampo">Reiniciar verificación</button>
+    <button class="act" id="btnExportCampo">Exportar historial (CSV)</button>
+  </div>
+
+  <h2>Mapa</h2>
+  <div class="table-wrap" id="gridWrapCampo"><span style="color:#888;font-size:.85rem;">El mapa aparecerá aquí cuando lo cargues.</span></div>
+
+  <h2>Historial de escaneos</h2>
+  <div class="table-wrap">
+    <table id="histCampoTable">
+      <thead><tr><th>Hora</th><th>Código escaneado</th><th>Plot</th><th>Entry</th><th>GID</th><th>Rol</th><th>Rango/Faja</th><th>Resultado</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div> <!-- /tabCampo -->
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -390,6 +457,7 @@ function cfg() {
 }
 
 function dbg(boxId, msg) {
+  console.log('[' + boxId + ']', msg);
   const el = document.getElementById(boxId);
   if (!el) return;
   el.style.display = 'block';
@@ -613,6 +681,7 @@ function renderProgTags() {
    ========================================================================= */
 
 let lotIndex = new Map(); // LOT UID (upper) -> {lotUID, gid, desig}
+let debugLotesCrudos = new Map(); // gid -> [registros crudos] -- solo para depurar duplicados, se puede quitar después
 let gidIndex = new Map(); // GID (string) -> {gid, desigOriginal, desigTight, lotCount} -- usado por la pestaña "Validar Listado Crudo"
 let uniqueGermplasmList = []; // [{gid, desigOriginal, desigTight}] deduplicado por GID, para búsqueda por nombre
 
@@ -720,7 +789,27 @@ async function cargarLotesBMS() {
 
 let _muestraLoteImpresa = false; // solo para diagnóstico
 
+// Año de creación del lote: no confirmado todavía contra este BMS. Se
+// prueba una lista de nombres de campo conocidos de BMS/BrAPI; si sale en
+// blanco en el Excel o en la tabla de validación, revisa el console.log
+// de "Ejemplo de lote crudo" (ver abajo) para ver el nombre real del
+// campo de fecha en tu instancia y agregarlo a esta lista.
+function extraerAnioLote(rec) {
+  const candidatos = [
+    rec.createdDate, rec.creationDate, rec.dateCreated, rec.lotCreatedDate,
+    rec.createdDatetime, rec.createdAt, rec.createdDateTime, rec.recordDate
+  ];
+  for (const c of candidatos) {
+    if (c === undefined || c === null || c === '') continue;
+    const m = String(c).match(/(\d{4})/);
+    if (m) return m[1];
+  }
+  return '';
+}
+
 function indexarLote(rec) {
+  { const gidDbg = String(rec.gid || rec.GID || '').trim();
+    if (gidDbg) { if (!debugLotesCrudos.has(gidDbg)) debugLotesCrudos.set(gidDbg,[]); debugLotesCrudos.get(gidDbg).push(rec); } }
   if(!_muestraLoteImpresa) {
     _muestraLoteImpresa = true;
     console.log('[Inventario BMS] Ejemplo de lote crudo (revisa el nombre real de la ubicación aquí):',rec);
@@ -733,8 +822,9 @@ function indexarLote(rec) {
   // peso actual: mismo campo que ya usamos para disponible ene el resto de la app
   const pesoNum = Number(rec.availableBalance ?? rec.actualBalance ?? rec.amount);
 
-  //ubicación: No confirmado todacvía contra este BMS. Si sale vacía en el campo 
-  //Excel, revisa el console.log arriba 
+  // ubicación (Storage Location): confirmado contra este BMS -- se ve
+  // correctamente en "Cargar Listado Oficial" y "Reporte Genbank" (ej.
+  // "Santa Lucia Milpas Alta", "CF1_ CAJA 300").
   const ubicacion = rec.locationName || rec.locationAbbrevation ||
     (rec.storageLocation && (rec.storageLocation.locationName || rec.storageLocation.name)) ||
     rec.location || '';
@@ -744,22 +834,25 @@ function indexarLote(rec) {
   const unidad = rec.unitName || (rec.unit && (rec.unit.name || rec.unit.unitName)) ||
     rec.unitAbbreviation || rec.unidad || '';
 
+  const anio = extraerAnioLote(rec);
+
   if (lotUID) lotIndex.set(String(lotUID).toUpperCase(),{
     lotUID: String(lotUID), gid, desig,
     peso: isNaN(pesoNum) ? '' : pesoNum,
     ubicacion,
-    unidad
+    unidad,
+    anio
   });
 
   if (gid) {
     let e = gidIndex.get(gid);
     if (!e) {
       e = { gid, desigOriginal: desig, desigTight: normTight(desig), lotCount: 0,
-            totalAvailable: 0, anyOpen: false };
+            totalAvailable: 0, anyOpen: false, unidades: new Set(), anios: new Set(), ubicaciones: new Set() };
       gidIndex.set(gid, e);
     }
-    e.lotCount++;
-        // Disponibilidad: sumamos el saldo disponible de todos los lotes de este
+    
+    // Disponibilidad: sumamos el saldo disponible de todos los lotes de este
     // GID y marcamos si al menos uno está abierto (status !== CLOSED).
     const avail = Number(rec.availableBalance);
     if (!isNaN(avail)) e.totalAvailable += avail;
@@ -767,6 +860,16 @@ function indexarLote(rec) {
     // lote vacío o cerrado no debería inflar el "(en N lotes)" que ve AR.
     if (!isNaN(avail) && avail > 0) e.lotCount++;
     if (rec.status && String(rec.status).toUpperCase() !== 'CLOSED') e.anyOpen = true;
+    // Unidad de medida (g, kg, etc.) -- normalmente es la misma para todos
+    // los lotes de un mismo GID, pero se guarda como set por si hubiera
+    // inconsistencias en BMS.
+    if (unidad) e.unidades.add(String(unidad).trim());
+    // Año de creación -- también como set, por si el mismo GID tiene lotes
+    // creados en años distintos.
+    if (anio) e.anios.add(anio);
+    // Ubicación (Storage Location en BMS) -- también como set, por si el
+    // mismo GID tiene lotes guardados en más de una ubicación.
+    if (ubicacion) e.ubicaciones.add(String(ubicacion).trim());
   }
 }
 
@@ -780,6 +883,7 @@ function descargarInventarioBMS(){
       LNAME: lot.desig,
       'Peso Actual': lot.peso,
       'Unidad': lot.unidad,
+      'Año Creación': lot.anio,
       'Ubicación': lot.ubicacion
     });
   });
@@ -830,8 +934,11 @@ async function buscarEstudiosEnPrograma(crop, q, programDbId, programName) {
     if (lista.length < pageSize) break;
     if (encontrados.length) break; // ya encontramos algo, no seguimos paginando de más
   }
-  return encontrados.map(s => ({ studyDbId: s.studyDbId, studyName: s.studyName, programName: programName || s.programName || '' }));
+    return encontrados.map(s => ({ studyDbId: s.studyDbId, studyName: s.studyName,
+    programDbId: programDbId || s.programDbId || s.programUUID || '',
+    programName: programName || s.programName || '' }));
 }
+
 
 async function buscarVivero() {
   const { crop } = cfg();
@@ -1229,6 +1336,8 @@ function showTab(tab) {
   $('tabBtnGenbank').classList.toggle('active', tab === 'genbank');
   $('tabReporte').style.display = (tab === 'reporte') ? '' : 'none';
   $('tabBtnReporte').classList.toggle('active', tab === 'reporte');
+  $('tabCampo').style.display = (tab === 'campo') ? '' : 'none';
+  $('tabBtnCampo').classList.toggle('active', tab === 'campo');
 }
 
 
@@ -1266,7 +1375,7 @@ function procesarEscaneoGenbank(code) {
   genbankActual = { obs: code, gid: hit.gid, desig: hit.desig, disponible, foto: '' };
   $('subGenbank').innerHTML  = '<span class="hl-ok">Encontrado en inventario &mdash; confirma contra el sticker</span>';
   $('kvGenbank').innerHTML = 
-    '<b>OBS UNIT ID</b><span class="mono">' + esc(code) + '</span>' +
+    '<b>LOT UID</b><span class="mono">' + esc(code) + '</span>' +
     '<b>GID</b><span class="mono">' + esc(hit.gid || '-') + '</span>' +
     '<b>DESIGNATION</b><span>' + esc(hit.desig || '-') +  '</span>' +
     '<b>DISPONIBLE</b><span>' + esc(disponible || '-') + '</span>';
@@ -1511,9 +1620,20 @@ function buscarPorNombre(nameTight) {
 function disponibilidadTexto(entry) {
   if (!entry) return '';
   const cant = Math.round(entry.totalAvailable * 100) / 100;
-  if (cant > 0) return cant + ' (en ' + entry.lotCount + (entry.lotCount === 1 ? ' lote' : ' lotes') + ')';
-  if (entry.anyOpen) return '0 (lote abierto, sin saldo)';
-  return '0 (sin existencia / cerrado)';
+  const unidadTxt = (entry.unidades && entry.unidades.size) ? ' ' + Array.from(entry.unidades).join('/') : '';
+  if (cant > 0) return cant + unidadTxt + ' (en ' + entry.lotCount + (entry.lotCount === 1 ? ' lote' : ' lotes') + ')';
+  if (entry.anyOpen) return '0' + unidadTxt + ' (lote abierto, sin saldo)';
+  return '0' + unidadTxt + ' (sin existencia / cerrado)';
+}
+
+function anioTexto(entry) {
+  if (!entry || !entry.anios || !entry.anios.size) return '';
+  return Array.from(entry.anios).sort().join(' / ');
+}
+
+function ubicacionTexto(entry) {
+  if (!entry || !entry.ubicaciones || !entry.ubicaciones.size) return '';
+  return Array.from(entry.ubicaciones).sort().join(' / ');
 }
 
 // Si el nombre coincide perfecto (estado 'ok') pero el GID no tiene semilla
@@ -1575,17 +1695,17 @@ function evaluarFila(gidRaw, nameRaw) {
   const name = String(nameRaw == null ? '' : nameRaw).trim();
 
   if (!gid && !name) {
-    return { estado: 'fila_invalida', gidBMS: '', desigBMS: '', disponible: '', detalle: 'Fila sin GID ni Nombre' };
+    return { estado: 'fila_invalida', gidBMS: '', desigBMS: '', disponible: '', anio: '', ubicacionBMS: '', detalle: 'Fila sin GID ni Nombre' };
   }
 
   if (gid) {
     const entry = gidIndex.get(gid);
     if (!entry) {
-      return { estado: 'gid_no_encontrado', gidBMS: '', desigBMS: '', disponible: '', detalle: 'GID ' + gid + ' no existe en el catálogo de lotes cargado' };
+      return { estado: 'gid_no_encontrado', gidBMS: '', desigBMS: '', disponible: '', anio: '', ubicacionBMS: '', detalle: 'GID ' + gid + ' no existe en el catálogo de lotes cargado' };
     }
     if (!name) {
       const av = conAlertaStock('ok', entry, 'GID encontrado (sin nombre en el archivo para comparar)');
-      return { estado: av.estado, gidBMS: gid, desigBMS: entry.desigOriginal, disponible: disponibilidadTexto(entry), detalle: av.detalle };
+      return { estado: av.estado, gidBMS: gid, desigBMS: entry.desigOriginal, disponible: disponibilidadTexto(entry), anio: anioTexto(entry), ubicacionBMS: ubicacionTexto(entry), detalle: av.detalle };
     }
 
 
@@ -1607,7 +1727,7 @@ function evaluarFila(gidRaw, nameRaw) {
     const exacto = candidatosUnicos.find(c => normTight(c.valor) === nTight);
     if (exacto) {
       const av = conAlertaStock('ok', entry, 'Coincidencia exacta con ' + exacto.tipo + ' ("' + exacto.valor + '")');
-      return { estado: av.estado, gidBMS: gid, desigBMS: exacto.valor, disponible: disponibilidadTexto(entry), detalle: av.detalle };
+      return { estado: av.estado, gidBMS: gid, desigBMS: exacto.valor, disponible: disponibilidadTexto(entry), anio: anioTexto(entry), ubicacionBMS: ubicacionTexto(entry), detalle: av.detalle };
     }
 
     let mejor = null;
@@ -1616,22 +1736,24 @@ function evaluarFila(gidRaw, nameRaw) {
       if (!mejor || d < mejor.dist) mejor = { tipo: c.tipo, valor: c.valor, dist: d };
     });
     if (mejor && mejor.dist <= 2) {
-      return { estado: 'ok_typo', gidBMS: gid, desigBMS: mejor.valor, disponible: disponibilidadTexto(entry), detalle: 'Posible error de tipeo contra ' + mejor.tipo + ' (distancia ' + mejor.dist + '): archivo dice "' + name + '", BMS dice "' + mejor.valor + '"' };
+      return { estado: 'ok_typo', gidBMS: gid, desigBMS: mejor.valor, disponible: disponibilidadTexto(entry), anio: anioTexto(entry), ubicacionBMS: ubicacionTexto(entry), detalle: 'Posible error de tipeo contra ' + mejor.tipo + ' (distancia ' + mejor.dist + '): archivo dice "' + name + '", BMS dice "' + mejor.valor + '"' };
     }
     const listaNombres = candidatosUnicos.map(c => c.tipo + '="' + c.valor + '"').join(', ');
-    return { estado: 'nombre_no_coincide', gidBMS: gid, desigBMS: entry.desigOriginal, disponible: disponibilidadTexto(entry), detalle: 'El nombre no coincide con ninguno de los nombres en BMS (' + listaNombres + '): archivo dice "' + name + '"' };
+    return { estado: 'nombre_no_coincide', gidBMS: gid, desigBMS: entry.desigOriginal, disponible: disponibilidadTexto(entry), anio: anioTexto(entry), ubicacionBMS: ubicacionTexto(entry), detalle: 'El nombre no coincide con ninguno de los nombres en BMS (' + listaNombres + '): archivo dice "' + name + '"' };
   }
 
   const nTight = normTight(name);
   const cands = buscarPorNombre(nTight);
   if (!cands.length) {
-    return { estado: 'nombre_no_encontrado', gidBMS: '', desigBMS: '', disponible: '', detalle: 'Sin GID en el archivo; no se halló ninguna coincidencia cercana por nombre en el catálogo' };
+    return { estado: 'nombre_no_encontrado', gidBMS: '', desigBMS: '', disponible: '', anio: '', ubicacionBMS: '', detalle: 'Sin GID en el archivo; no se halló ninguna coincidencia cercana por nombre en el catálogo' };
   }
   if (cands[0].dist === 0) {
-    return { estado: 'revisar_sin_gid', gidBMS: cands[0].gid, desigBMS: cands[0].desig, disponible: disponibilidadTexto(gidIndex.get(cands[0].gid)), detalle: 'Sin GID en el archivo, pero el nombre coincide exacto con GID ' + cands[0].gid + ' en BMS' };
+    const entryCand = gidIndex.get(cands[0].gid);
+    return { estado: 'revisar_sin_gid', gidBMS: cands[0].gid, desigBMS: cands[0].desig, disponible: disponibilidadTexto(entryCand), anio: anioTexto(entryCand), ubicacionBMS: ubicacionTexto(entryCand), detalle: 'Sin GID en el archivo, pero el nombre coincide exacto con GID ' + cands[0].gid + ' en BMS' };
   }
+  const entryCand = gidIndex.get(cands[0].gid);
   const lista = cands.map(c => 'GID ' + c.gid + ' ("' + c.desig + '", distancia ' + c.dist + ')').join('; ');
-  return { estado: 'revisar_sin_gid_aprox', gidBMS: cands[0].gid, desigBMS: cands[0].desig, disponible: disponibilidadTexto(gidIndex.get(cands[0].gid)), detalle: 'Sin GID en el archivo; candidatos cercanos: ' + lista };
+  return { estado: 'revisar_sin_gid_aprox', gidBMS: cands[0].gid, desigBMS: cands[0].desig, disponible: disponibilidadTexto(entryCand), anio: anioTexto(entryCand), ubicacionBMS: ubicacionTexto(entryCand), detalle: 'Sin GID en el archivo; candidatos cercanos: ' + lista };
 }
 
 const ESTADO_INFO = {
@@ -1729,6 +1851,8 @@ function renderResultadosValidacion() {
       '<td>' + esc(r.gidBMS) + '</td>' +
       '<td>' + esc(r.desigBMS) + '</td>' +
       '<td>' + esc(r.disponible) + '</td>' +
+      '<td>' + esc(r.ubicacionBMS || '-') + '</td>' +
+      '<td>' + esc(r.anio || '-') + '</td>' +
       '<td><span class="tag ' + info.tag + '">' + info.texto + '</span></td>' +
       '<td>' + esc(r.detalle) + '</td>';
     tbody.appendChild(tr);
@@ -1744,11 +1868,11 @@ function renderResultadosValidacion() {
 }
 
 $('btnExportValidacion').addEventListener('click', () => {
-  const cols = ['Orden','Rol','GID archivo','Nombre archivo','GID BMS','Designation BMS','Disponible','Estado','Detalle'];
+  const cols = ['Orden','Rol','GID archivo','Nombre archivo','GID BMS','Designation BMS','Disponible','Ubicación','Año','Estado','Detalle'];
   const lines = [cols.join(',')];
   ultimosResultados.forEach(r => {
     const info = ESTADO_INFO[r.estado];
-    const vals = [r.orden, r.rol, r.gidArchivo, r.nombreArchivo, r.gidBMS, r.desigBMS, r.disponible, info.texto, r.detalle]
+    const vals = [r.orden, r.rol, r.gidArchivo, r.nombreArchivo, r.gidBMS, r.desigBMS, r.disponible, r.ubicacionBMS, r.anio, info.texto, r.detalle]
       .map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"');
     lines.push(vals.join(','));
   });
@@ -1792,6 +1916,7 @@ function generarReporteEKGenbank() {
           gid: r.gidBMS,
           nombre: r.desigBMS,
           disponible: r.disponible,
+          ubicacionBMS: r.ubicacionBMS || '',
           pesoArchivo: 0,
           ubicaciones: new Set(),
           estadoValidacion: ESTADO_INFO[r.estado].texto
@@ -1810,6 +1935,7 @@ function generarReporteEKGenbank() {
       gid: g.gid,
       nombre: g.nombre,
       disponible: g.disponible,
+      ubicacionBMS: g.ubicacionBMS || '',
       pesoArchivo: g.pesoArchivo || '',
       ubicacionArchivo: Array.from(g.ubicaciones).join(' / '),
       estadoValidacion: g.estadoValidacion,
@@ -1841,6 +1967,7 @@ function renderReporte() {
       '<td class="mono">' + esc(r.gid) + '</td>' +
       '<td>' + esc(r.nombre) + '</td>' +
       '<td>' + esc(r.disponible) + '</td>' +
+      '<td>' + esc(r.ubicacionBMS || '-') + '</td>' +
       '<td>' + esc(r.pesoArchivo || '-') + '</td>' +
       '<td>' + esc(r.ubicacionArchivo || '-') + '</td>' +
       '<td>' + esc(r.estadoValidacion) + '</td>' +
@@ -1858,10 +1985,10 @@ function renderReporte() {
 
 function exportarReporte() {
   if (!reportRows.length) { alert('No hay reporte generado.'); return; }
-  const headers = ['Orden', 'GID', 'Nombre BMS', 'Disponible', 'Peso (archivo EK)', 'Ubicación (archivo EK)', 'Estado validación EK', 'Escaneado en Genbank', 'Veces', 'Última hora'];
+  const headers = ['Orden', 'GID', 'Nombre BMS', 'Disponible', 'Ubicación (BMS)', 'GID (Listado Oficial)', 'Ubicación (Listado Oficial)', 'Estado validación EK', 'Escaneado en Genbank', 'Veces', 'Última hora'];
   const rows = [headers.join(',')];
   reportRows.forEach(r => {
-    const vals = [r.orden, r.gid, r.nombre, r.disponible, r.pesoArchivo, r.ubicacionArchivo, r.estadoValidacion, r.veces > 0 ? 'Sí' : 'No', r.veces, r.ultimaHora];
+    const vals = [r.orden, r.gid, r.nombre, r.disponible, r.ubicacionBMS, r.pesoArchivo, r.ubicacionArchivo, r.estadoValidacion, r.veces > 0 ? 'Sí' : 'No', r.veces, r.ultimaHora];
     rows.push(vals.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(','));
   });
   const csv = '\uFEFF' + rows.join('\n');
@@ -1871,6 +1998,688 @@ function exportarReporte() {
   a.download = 'reporte_ek_genbank_' + new Date().toISOString().slice(0,10) + '.csv';
   a.click();
 }
+
+/* =========================================================================
+   VERIFICACIÓN CAMPO
+   =========================================================================
+   Chequeo de seguridad en laboratorio (no en campo): se sube el mapa de
+   siembra ya generado (Backcross/Self con GID, o Finca/Registro/Screening/
+   Parent Testing con varias localidades) y se escanean los sobres (OBS
+   UNIT ID) en el mismo orden del mapa.
+
+   Detección de tipo: si el libro tiene una hoja llamada exactamente
+   "FIELD MAP" -> una sola localidad, formato con GID (Backcross/Self).
+   Si no -> cada hoja es una localidad distinta (Finca/Registro/Screening/
+   Parent Testing), sin GID; el nombre de la localidad se lee del campo
+   "Field Location" dentro de cada hoja.
+
+   El OBS_UNIT_ID no viene confiablemente en el Excel (se confirmó que solo
+   un archivo de ejemplo lo traía, por excepción), así que se resuelve
+   conectando a BMS por localidad: se busca el Study, se elige el ambiente
+   (studyDbId) cuya variable LOCATION_NAME coincida con el "Field Location"
+   leído del Excel, se cargan sus observationunits, y se cruza por
+   PLOT_CODE (tipos con GID) o PLOT_NO (tipos sin GID) para obtener el
+   OBS_UNIT_ID real de cada Plot.
+
+   IMPORTANTE (encontrado probando contra BMS real): el código impreso en
+   el sobre físico no siempre corresponde a observationUnitDbId -- según
+   la versión/configuración de BMS puede ser observationUnitName o
+   observationUnitPUI (misma situación ya documentada en "Origen vs
+   Experimento" -> indexarObsUnit(), que por eso indexa bajo los 3
+   campos). Aquí se hace lo mismo: cada Plot puede tener varios "alias" de
+   OBS_UNIT_ID, y CUALQUIERA de ellos debe reconocer el mismo Plot al
+   escanear.
+
+   Por esto el ORDEN esperado de escaneo se controla por PLOT (no por el
+   valor de OBS_UNIT_ID escaneado): campoOrdenEsperado es la lista de
+   códigos de Plot en orden ascendente numérico, y campoRegPorPlot guarda
+   el registro real (con su <td> del grid) por Plot. campoMapaIndex es
+   solo el índice de búsqueda al escanear (alias de OBS_UNIT_ID -> mismo
+   registro), y puede tener más entradas que Plots si un Plot tiene varios
+   alias.
+
+   SUPUESTO A CONFIRMAR: el orden correcto de los sobres es el orden
+   numérico ascendente del código de Plot (G1201, G1202... o Plot-1,
+   Plot-2...), no el orden visual serpentín de la hoja.
+   ========================================================================= */
+
+let campoWorkbook = null;
+let campoLocalidades = [];      // [{sheetName, fieldLocation, estudio, rows}]
+let campoMapaIndex = new Map(); // alias de OBS_UNIT_ID (mayúsculas) -> registro (varios alias pueden compartir registro)
+let campoRegPorPlot = new Map(); // Plot code (mayúsculas) -> registro -- para orden y mensajes "se esperaba"
+let campoOrdenEsperado = [];    // [Plot code,...] orden ascendente esperado, POR PLOT (no por OBS_UNIT_ID)
+let campoPuntero = 0;
+let campoHistorial = [];
+let campoTieneGid = false;
+let campoObsIndex = new Map();  // PLOT_CODE o PLOT_NO (mayúsculas) -> [alias de OBS_UNIT_ID], para la localidad activa
+
+// Extrae pares "Etiqueta: Valor" en cualquier orden -- funciona tanto para
+// "Plot:X GID:Y Role:Z Entry:W" (Backcross) como para
+// "Plot Code:X Plot No:Y GID:Z Entry:W" (Self), sin importar el orden ni
+// si trae Role o no. Si no hay ningún ":" (formato Finca/Registro/
+// Screening/Parent Testing), cae al parseo por líneas de siempre.
+function parseCeldaMapaCampo(raw) {
+  if (raw == null) return null;
+  const text = String(raw).trim();
+  if (!text) return null;
+
+  const pares = {};
+  const regexPar = /([A-Za-zÁÉÍÓÚáéíóúñÑ][A-Za-zÁÉÍÓÚáéíóúñÑ\s]{0,20}?):\s*(\S+)/g;
+  let m;
+  while ((m = regexPar.exec(text)) !== null) {
+    const etiqueta = m[1].trim().toLowerCase().replace(/\s+/g, ' ');
+    pares[etiqueta] = m[2].trim();
+  }
+
+  const plot = pares['plot code'] || pares['plot'] || null;
+  if (plot) {
+    const gid = pares['gid'] || '';
+    const rol = pares['role'] || pares['rol'] || '';
+    const entry = pares['entry'] || '';
+    const plotNo = pares['plot no'] || '';
+    return { plot, plotNo, entry, gid, rol, tieneGid: !!gid };
+  }
+
+  // Formato "Plot-72\nEntry 21\nRep 2" (Finca / Registro / Screening / Parent Testing)
+  const lineas = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  let plot2 = null, entry2 = '';
+  lineas.forEach(l => {
+    let mm;
+    if ((mm = l.match(/^Plot[-:\s]*(\S+)/i))) plot2 = mm[1];
+    else if ((mm = l.match(/^Entry[:\s]*(\S+)/i))) entry2 = mm[1];
+  });
+  if (plot2) return { plot: plot2, plotNo: '', entry: entry2, gid: '', rol: '', tieneGid: false };
+
+  return null;
+}
+
+function plotNumeroCampo(p) {
+  const m = String(p).match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER;
+}
+
+// Busca el valor asociado a una etiqueta tipo "Field Location" (la etiqueta
+// y el valor pueden venir separados por 1 o varias columnas por celdas
+// combinadas). Se detiene si encuentra otra etiqueta conocida antes de
+// hallar un valor real (pasa cuando el campo viene vacío, ej. "Field Name").
+const ETIQUETAS_CONOCIDAS_CAMPO = [
+  'field location','field name','block name','block capacity','rows per plot',
+  'surcos per plot','columns','starting coordinates','plot layout order',
+  'row capacity of planting machine'
+];
+function extraerEtiquetaCampo(rows, etiqueta, maxCols) {
+  maxCols = maxCols || 6;
+  const obj = etiqueta.toLowerCase();
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      if (String(row[c] ?? '').trim().toLowerCase() === obj) {
+        for (let cc = c + 1; cc < Math.min(row.length, c + 1 + maxCols); cc++) {
+          const vTxt = String(row[cc] ?? '').trim();
+          if (!vTxt) continue;
+          if (ETIQUETAS_CONOCIDAS_CAMPO.includes(vTxt.toLowerCase())) return '';
+          return vTxt;
+        }
+        return '';
+      }
+    }
+  }
+  return '';
+}
+
+function extraerEstudioCampo(rows) {
+  for (let r = 0; r < rows.length - 1; r++) {
+    const row = rows[r] || [];
+    const idx = row.findIndex(v => String(v ?? '').trim().toLowerCase() === 'study');
+    if (idx >= 0) {
+      for (let rr = r + 1; rr < rows.length; rr++) {
+        const v = (rows[rr] || [])[idx];
+        if (v !== '' && v != null) return String(v).trim();
+      }
+    }
+  }
+  return '';
+}
+
+// Reconoce la cuadrícula del mapa: busca las filas de encabezado
+// ("Rows"/"Surcos" seguido de números 1..N) -- en cualquier columna, ya
+// que en algunos libros (ej. Backcross) la cuadrícula viene corrida una
+// columna a la derecha -- y arma la lista de celdas entre el primer y el
+// último encabezado encontrado.
+function parseGridMapaCampo(rows) {
+  let headerCol = -1;
+  const headerIdxs = [];
+  rows.forEach((row, i) => {
+    if (!row) return;
+    for (let c = 0; c < row.length; c++) {
+      const v = String(row[c] ?? '').trim().toLowerCase();
+      if (v === 'rows' || v === 'surcos') {
+        headerIdxs.push(i);
+        if (headerCol === -1) headerCol = c;
+        return;
+      }
+    }
+  });
+  if (headerIdxs.length < 2 || headerCol === -1) return null;
+
+  const inicio = headerIdxs[0];
+  const fin = headerIdxs[headerIdxs.length - 1];
+  const headerRow = rows[inicio] || [];
+  const columnas = [];
+  for (let c = headerCol + 1; c < headerRow.length; c++) {
+    const v = headerRow[c];
+    if (v !== '' && v != null && !isNaN(Number(v))) columnas.push(c);
+  }
+  if (!columnas.length) return null;
+
+  const filas = [];
+  for (let i = inicio + 1; i < fin; i++) {
+    const row = rows[i] || [];
+    const label = String(row[headerCol] ?? '').trim();
+    if (!label) continue;
+    filas.push({ label, celdas: columnas.map(c => row[c]) });
+  }
+  if (!filas.length) return null;
+
+  return { numColumnas: columnas.length, filas };
+}
+
+
+function expandirCeldasFusionadas(ws, rows) {
+  const merges = (ws && ws['!merges']) || [];
+  if (!merges.length) return rows;
+
+  // ws['!merges'] usa coordenadas ABSOLUTAS de toda la hoja (fila/columna 0
+  // = A1 real), pero sheet_to_json(ws,{header:1}) devuelve un array indexado
+  // de forma RELATIVA al rango usado (!ref) -- si la hoja tiene contenido
+  // "flotando" antes de la cuadrícula (ej. un resumen arriba, como en los
+  // archivos de Finca/Registro), !ref empieza en una fila > 0 y hay que
+  // restar ese desfase antes de indexar en `rows`. Sin esto, el merge de
+  // una fila termina aplicándose a otra fila (o fuera de rango).
+  const ref = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { s: { r: 0, c: 0 } };
+  const rOffset = ref.s.r, cOffset = ref.s.c;
+
+  merges.forEach(m => {
+    const r0 = m.s.r - rOffset, c0 = m.s.c - cOffset;
+    const r1 = m.e.r - rOffset, c1 = m.e.c - cOffset;
+    const valorOrigen = (rows[r0] || [])[c0];
+    if (valorOrigen === undefined || valorOrigen === '') return;
+    for (let r = r0; r <= r1; r++) {
+      if (!rows[r]) continue;
+      for (let c = c0; c <= c1; c++) {
+        if (r === r0 && c === c0) continue;
+        rows[r][c] = valorOrigen;
+      }
+    }
+  });
+  return rows;
+}
+
+// Quita el código entre paréntesis para comparar "SN El Ovejero (SN_OVEJERO)"
+// (como lo guarda BMS) contra el "SN El Ovejero" que viene del Excel.
+function limpiarNombreLocalidad(s) {
+  return normLoose(String(s || '').replace(/\([^)]*\)\s*$/, ''));
+}
+
+// Busca en el detalle de un study la variable de ambiente LOCATION_NAME.
+// PUNTO IMPORTANTE / SIN CONFIRMAR TODAVIA: se asume que viaja en
+// study.environmentParameters (estándar BrAPI v2). Si en este BMS no
+// aparece ahí, revisa el console.log de abajo ("Estudio crudo de Campo")
+// para ver la estructura real y ajustar esta función.
+function extraerLocationNameEstudio(study) {
+  if (Array.isArray(study.environmentParameters)) {
+    const p = study.environmentParameters.find(p => String(p.parameterName || '').toUpperCase() === 'LOCATION_NAME');
+    if (p && p.value) return p.value;
+  }
+  const plano = JSON.stringify(study);
+  const m = plano.match(/"LOCATION_NAME"[^}]*?"value"\s*:\s*"([^"]+)"/i);
+  return m ? m[1] : '';
+}
+
+let _muestraEstudioCampoImpresa = false; // solo diagnóstico
+
+// Busca el studyDbId (ambiente) correcto para una localidad, reutilizando
+// buscarEstudiosEnPrograma() -- la misma búsqueda por programa que ya usa
+// "Origen vs Experimento" -- para no perder estudios creados en un programa
+// distinto al activo por defecto (Mejoramiento / Evaluación).
+async function buscarAmbienteCampoPorLocalidad(estudioNombre, fieldLocation) {
+  const { crop } = cfg();
+  const objetivo = limpiarNombreLocalidad(fieldLocation);
+
+  const programasABuscar = programasDisponibles.filter(p => p.selected);
+  let candidatos = [];
+  const vistos = new Set();
+
+  if (programasABuscar.length) {
+    for (const prog of programasABuscar) {
+      const enEstePrograma = await buscarEstudiosEnPrograma(crop, estudioNombre, prog.programDbId, prog.programName);
+      for (const est of enEstePrograma) {
+        if (vistos.has(est.studyDbId)) continue;
+        vistos.add(est.studyDbId);
+        candidatos.push(est);
+      }
+    }
+  } else {
+    candidatos = await buscarEstudiosEnPrograma(crop, estudioNombre, null, '');
+  }
+
+  if (!candidatos.length) {
+    dbg('debugCampo', 'Ningún estudio encontrado con nombre "' + estudioNombre + '"');
+    return null;
+  }
+
+  // Un solo ambiente (caso Backcross/Self) -> lo usamos directo, no hace
+  // falta comparar LOCATION_NAME.
+    if (candidatos.length === 1) return { studyDbId: candidatos[0].studyDbId, programDbId: candidatos[0].programDbId || '' };
+
+  // Varios ambientes -> el listado paginado normalmente NO trae
+  // environmentParameters completo, así que se pide el detalle de cada
+  // candidato uno por uno para poder leer su LOCATION_NAME real.
+  for (const est of candidatos) {
+    const r = await nativeFetch('/bmsapi/' + crop + '/brapi/v2/studies/' + encodeURIComponent(est.studyDbId), {}, 'debugCampo');
+    if (!r.ok) { dbg('debugCampo', 'studyDbId ' + est.studyDbId + ' -> HTTP ' + r.status); continue; }
+    const d = await r.json();
+    const detalle = d.result || d;
+
+    if (!_muestraEstudioCampoImpresa) {
+      _muestraEstudioCampoImpresa = true;
+      console.log('[Verificación Campo] Estudio crudo de ejemplo (revisa aquí dónde viene LOCATION_NAME):', detalle);
+      dbg('debugCampo', 'Ejemplo de estudio crudo impreso en la consola del navegador (F12 → Console).');
+    }
+
+    const loc = extraerLocationNameEstudio(detalle);
+    dbg('debugCampo', 'Ambiente studyDbId=' + est.studyDbId + ' LOCATION_NAME="' + loc + '"');
+        if (loc && limpiarNombreLocalidad(loc) === objetivo) return { studyDbId: est.studyDbId, programDbId: est.programDbId || '' };
+  }
+
+  dbg('debugCampo', 'Ninguno de los ' + candidatos.length + ' ambientes coincidió con Field Location "' + fieldLocation + '"');
+  return null;
+}
+
+let _muestraObsUnitCampoImpresa = false; // solo diagnóstico
+
+// Carga observationunits de UN studyDbId (una sola localidad/ambiente a la
+// vez, para no cruzar Plots repetidos entre localidades) y arma el mapa
+// PLOT_CODE o PLOT_NO (según tieneGid) -> [alias de OBS_UNIT_ID].
+//
+// IMPORTANTE: se guardan VARIOS alias por Plot (observationUnitDbId,
+// observationUnitName, observationUnitPUI) porque no está confirmado cuál
+// de los tres es el que realmente viene impreso en el sobre físico -- ya
+// se vio en "Origen vs Experimento" (indexarObsUnit) que esto varía. Si al
+// escanear sigue sin encontrar, revisa el console.log de abajo
+// ("Observation unit crudo de Campo") y compara manualmente el valor
+// contra lo impreso en un sobre real.
+async function cargarObsUnitCampoBMS(studyDbId, tieneGid, programDbId) {
+  const { crop } = cfg();
+  campoObsIndex = new Map();
+  let page = 0;
+  const pageSize = 1000;
+  while (true) {
+    let qs = '?studyDbId=' + encodeURIComponent(studyDbId) + '&page=' + page + '&pageSize=' + pageSize;
+    if (programDbId) qs += '&programDbId=' + encodeURIComponent(programDbId);
+    const r = await nativeFetch('/bmsapi/' + crop + '/brapi/v2/observationunits', { qs }, 'debugCampo');
+    if (!r.ok) { dbg('debugCampo', 'observationunits página ' + page + ' falló HTTP ' + r.status); break; }
+    const d = await r.json();
+    const recs = (d.result && d.result.data) || [];
+    if (!recs.length) break;
+    recs.forEach(rec => {
+      if (!_muestraObsUnitCampoImpresa) {
+        _muestraObsUnitCampoImpresa = true;
+        console.log('[Verificación Campo] Observation unit crudo de ejemplo (compara estos 3 campos contra el sobre físico):', {
+          observationUnitDbId: rec.observationUnitDbId,
+          observationUnitName: rec.observationUnitName,
+          observationUnitPUI: rec.observationUnitPUI
+        });
+        dbg('debugCampo', 'Ejemplo de OBS UNIT: DbId="' + (rec.observationUnitDbId||'') + '" Name="' + (rec.observationUnitName||'') + '" PUI="' + (rec.observationUnitPUI||'') + '"');
+        try {
+          const relEj = ((rec.observationUnitPosition || {}).observationLevelRelationships) || [];
+          if (relEj.length) {
+            dbg('debugCampo', 'Niveles disponibles en este OBS UNIT: ' + relEj.map(l => l.levelName + '="' + l.levelCode + '"').join(', '));
+          } else {
+            dbg('debugCampo', 'Este OBS UNIT no trae observationLevelRelationships en absoluto.');
+          }
+        } catch (e) {}
+      }
+      
+      const nivelPropio = ((rec.observationUnitPosition || {}).observationLevel || {}).levelName || '';
+      if (nivelPropio !== 'PLOT') return;
+
+      let claveCruce = '';
+      try {
+        const pos = rec.observationUnitPosition || {};
+        const rel = pos.observationLevelRelationships || [];
+        const campoNombre = tieneGid ? 'PLOT_CODE' : 'PLOT';
+        const hit = rel.find(l => l.levelName === campoNombre);
+        if (hit) claveCruce = hit.levelCode || '';
+      } catch (e) {}
+      if (!claveCruce) return;
+
+      const alias = [rec.observationUnitDbId, rec.observationUnitName, rec.observationUnitPUI]
+        .filter(Boolean).map(String);
+      if (alias.length) campoObsIndex.set(String(claveCruce).toUpperCase(), alias);
+    });
+    if (recs.length < pageSize) break;
+    page++;
+    if (page > 60) break;
+  }
+  dbg('debugCampo', 'OBS UNIT cargados para studyDbId ' + studyDbId + ': ' + campoObsIndex.size + ' plot(s)');
+}
+
+$('fileInputCampo').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if (!file) return;
+  $('fileStatusCampo').textContent = 'Leyendo archivo...';
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      campoWorkbook = XLSX.read(e.target.result, { type: 'array' });
+      prepararLocalidadesCampo();
+    } catch (err) {
+      $('fileStatusCampo').textContent = 'Error leyendo el archivo: ' + err.message;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function prepararLocalidadesCampo() {
+  const wb = campoWorkbook;
+  campoLocalidades = [];
+
+  const nombreFieldMap = wb.SheetNames.find(n => n.trim().toLowerCase() === 'field map');
+
+  if (nombreFieldMap) {
+    // Backcross / Self: una sola localidad. "Field Location" puede estar
+    // en la misma hoja "FIELD MAP" o en una hoja "SUMMARY" aparte.
+    const rowsMapa = XLSX.utils.sheet_to_json(wb.Sheets[nombreFieldMap], { header: 1, raw: false, defval: '' });
+    expandirCeldasFusionadas(wb.Sheets[nombreFieldMap], rowsMapa);
+    let fieldLocation = extraerEtiquetaCampo(rowsMapa, 'Field Location');
+    let estudio = extraerEstudioCampo(rowsMapa);
+    const nombreSummary = wb.SheetNames.find(n => n.trim().toLowerCase() === 'summary');
+    if (nombreSummary && (!fieldLocation || !estudio)) {
+      const rowsSummary = XLSX.utils.sheet_to_json(wb.Sheets[nombreSummary], { header: 1, raw: false, defval: '' });
+      expandirCeldasFusionadas(wb.Sheets[nombreSummary], rowsSummary);
+      if (!fieldLocation) fieldLocation = extraerEtiquetaCampo(rowsSummary, 'Field Location');
+      if (!estudio) estudio = extraerEstudioCampo(rowsSummary);
+    }
+    campoLocalidades.push({ sheetName: nombreFieldMap, fieldLocation: fieldLocation || nombreFieldMap, estudio, rows: rowsMapa });
+  } else {
+    // Finca / Registro / Screening / Parent Testing: cada hoja es una
+    // localidad distinta con su propia cuadrícula.
+    wb.SheetNames.forEach(n => {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' });
+      expandirCeldasFusionadas(wb.Sheets[n], rows);
+      const grid = parseGridMapaCampo(rows);
+      if (!grid) return; // hoja sin estructura de mapa reconocible, se ignora
+      const fieldLocation = extraerEtiquetaCampo(rows, 'Field Location') || n;
+      const estudio = extraerEstudioCampo(rows);
+      campoLocalidades.push({ sheetName: n, fieldLocation, estudio, rows });
+    });
+  }
+
+  if (!campoLocalidades.length) {
+    $('fileStatusCampo').innerHTML = '<span class="hl-bad">No se reconoció ninguna hoja con estructura de mapa (Rows/Surcos). Revisa el archivo.</span>';
+    return;
+  }
+
+  const picker = $('localidadPickerCampo');
+  picker.innerHTML = '';
+  campoLocalidades.forEach((loc, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = loc.fieldLocation + (loc.estudio ? ' — ' + loc.estudio : '') + ' (' + loc.sheetName + ')';
+    picker.appendChild(opt);
+  });
+  $('localidadWrapCampo').style.display = 'block';
+  $('fileStatusCampo').innerHTML = '<span class="hl-ok">' + campoLocalidades.length + ' localidad(es) detectada(s).</span> Elige la localidad y presiona "Cargar mapa de esta localidad".';
+}
+
+$('btnCargarLocalidadCampo').addEventListener('click', () => {
+  const idx = parseInt($('localidadPickerCampo').value, 10);
+  const loc = campoLocalidades[idx];
+  if (!loc) return;
+  $('btnCargarLocalidadCampo').disabled = true;
+  cargarMapaCampo(loc).finally(() => { $('btnCargarLocalidadCampo').disabled = false; });
+});
+
+async function cargarMapaCampo(loc) {
+  const grid = parseGridMapaCampo(loc.rows);
+  if (!grid) {
+    $('fileStatusCampo').innerHTML = '<span class="hl-bad">No se pudo reconocer la cuadrícula de esta hoja.</span>';
+    return;
+  }
+
+  campoMapaIndex = new Map();
+  campoRegPorPlot = new Map();
+  campoOrdenEsperado = [];
+  campoPuntero = 0;
+  campoHistorial = [];
+  campoTieneGid = false;
+  document.querySelector('#histCampoTable tbody').innerHTML = '';
+
+  const wrap = $('gridWrapCampo');
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  trh.innerHTML = '<th></th>' + Array.from({length: grid.numColumnas}, (_, i) => '<th>' + (i+1) + '</th>').join('');
+  thead.appendChild(trh);
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+
+  grid.filas.forEach(fila => {
+    const tr = document.createElement('tr');
+    const tdLabel = document.createElement('td');
+    tdLabel.textContent = fila.label;
+    tdLabel.style.fontWeight = '700';
+    tr.appendChild(tdLabel);
+
+    fila.celdas.forEach(raw => {
+      const td = document.createElement('td');
+      const parsed = parseCeldaMapaCampo(raw);
+      if (!parsed) {
+        td.innerHTML = '&nbsp;';
+        tr.appendChild(td);
+        return;
+      }
+      if (parsed.tieneGid) campoTieneGid = true;
+      const codigo = String(parsed.plot).toUpperCase();
+      td.className = 'cell-campo pendiente';
+      td.innerHTML = 'Plot: ' + esc(parsed.plot) +
+        (parsed.plotNo ? '<br>Plot No: ' + esc(parsed.plotNo) : '') +
+        '<br>Entry: ' + esc(parsed.entry) +
+        (parsed.tieneGid ? '<br>GID: ' + esc(parsed.gid) : '') +
+        (parsed.rol ? '<br>' + esc(parsed.rol) : '');
+      td.dataset.plot = codigo;
+
+      // Un mismo Plot puede repetirse en varias columnas de Surco seguidas
+      // (celda fusionada en el Excel abarcando 2, 3 o 4 surcos -- el mismo
+      // material ocupa varias filas del terreno). Un solo escaneo cubre
+      // todo el bloque, así que reutilizamos el mismo registro y solo
+      // acumulamos sus <td> en vez de crear uno nuevo por columna.
+      let registro = campoRegPorPlot.get(codigo);
+      if (registro) {
+        registro.tds.push(td);
+      } else {
+        registro = { plot: parsed.plot, plotNo: parsed.plotNo, entry: parsed.entry, gid: parsed.gid, rol: parsed.rol,
+                      tieneGid: parsed.tieneGid, rangeLabel: fila.label, estado: 'pendiente', tds: [td] };
+        campoRegPorPlot.set(codigo, registro);
+        campoOrdenEsperado.push(codigo);
+      }
+
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.innerHTML = '';
+  wrap.appendChild(table);
+
+  campoOrdenEsperado.sort((a, b) => plotNumeroCampo(a) - plotNumeroCampo(b));
+
+  $('infoMapaCampo').style.display = 'block';
+  $('infoEstudioCampo').textContent = loc.estudio || '—';
+  $('infoLocalidadCampo').textContent = loc.fieldLocation || '—';
+  $('infoTipoCampo').textContent = campoTieneGid ? 'Backcross / Self (Plot + Entry + GID)' : 'Finca / Registro / Screening / Parent Testing (Plot + Entry)';
+  $('infoTotalCampo').textContent = campoOrdenEsperado.length;
+  $('summaryCampo').style.display = 'flex';
+  actualizarContadoresCampo();
+
+  // --- Resolver OBS_UNIT_ID vía BMS antes de habilitar el escaneo ---
+  // (una sola localidad/ambiente a la vez, para no cruzar Plots repetidos
+  // entre localidades distintas del mismo estudio)
+  $('scanCampo').disabled = true;
+  $('fileStatusCampo').innerHTML = '<span class="spinner-inline"></span> Conectando a BMS para resolver OBS UNIT de esta localidad...';
+
+  const ambiente = await buscarAmbienteCampoPorLocalidad(loc.estudio, loc.fieldLocation);
+  if (!ambiente) {
+    $('fileStatusCampo').innerHTML = '<span class="hl-bad">No se encontró en BMS el ambiente para "' + esc(loc.fieldLocation) + '".</span>';
+    return;
+  }
+  await cargarObsUnitCampoBMS(ambiente.studyDbId, campoTieneGid, ambiente.programDbId);
+
+  // campoMapaIndex es el índice de BÚSQUEDA al escanear: cada alias de
+  // OBS_UNIT_ID (dbId / name / PUI) de un Plot apunta al MISMO objeto
+  // `registro` que ya vive en campoRegPorPlot -- así, sin importar cuál de
+  // los 3 campos traiga impreso el sobre físico, el escaneo encuentra el
+  // registro correcto y actualiza su estado una sola vez.
+  let sinObs = 0;
+  campoOrdenEsperado.forEach(codigoPlot => {
+    const registro = campoRegPorPlot.get(codigoPlot);
+    const alias = campoObsIndex.get(codigoPlot);
+    if (!alias || !alias.length) { sinObs++; return; }
+    alias.forEach(a => campoMapaIndex.set(String(a).toUpperCase(), registro));
+  });
+
+  if (sinObs > 0) dbg('debugCampo', 'Advertencia: ' + sinObs + ' plot(s) del Excel no tuvieron OBS_UNIT_ID en BMS.');
+
+  $('scanCampo').disabled = false;
+  $('scanCampo').placeholder = 'Escanee el primer sobre';
+  $('subCampo').textContent = '';
+  $('verdictCampo').className = 'verdict';
+  $('verdictCampo').textContent = 'Mapa cargado. Escanee los sobres en orden.';
+  $('fileStatusCampo').innerHTML = '<span class="hl-ok">Listo.</span> ' + (campoOrdenEsperado.length - sinObs) + ' de ' + campoOrdenEsperado.length + ' plots con OBS UNIT resuelto.';
+  actualizarContadoresCampo();
+  $('scanCampo').focus();
+}
+
+function actualizarContadoresCampo() {
+  let ok = 0, alertas = 0;
+  campoRegPorPlot.forEach(r => {
+    if (r.estado === 'ok') ok++;
+    else if (r.estado !== 'pendiente') alertas++;
+  });
+  $('sTotalCampo').textContent = campoRegPorPlot.size;
+  $('sOkCampo').textContent = ok;
+  $('sPendCampo').textContent = campoRegPorPlot.size - ok - alertas;
+  $('sAlertCampo').textContent = alertas;
+}
+
+function pintarCeldaCampo(registro, estado) {
+  if (!registro || !registro.tds) return;
+  registro.tds.forEach(td => {
+    td.classList.remove('pendiente', 'ok', 'alerta');
+    td.classList.add(estado === 'ok' ? 'ok' : 'alerta');
+  });
+}
+
+function registrarHistorialCampo(codigo, reg, resultado) {
+  campoHistorial.unshift({
+    hora: new Date().toLocaleTimeString(),
+    codigo, plot: reg ? reg.plot : codigo, entry: reg ? reg.entry : '',
+    gid: reg ? reg.gid : '', rol: reg ? reg.rol : '', rango: reg ? reg.rangeLabel : '', resultado
+  });
+  const tb = document.querySelector('#histCampoTable tbody');
+  const h = campoHistorial[0];
+  const tr = document.createElement('tr');
+  const cls = h.resultado === 'OK' ? 'badge-true' : 'badge-false';
+  tr.innerHTML = '<td>' + h.hora + '</td><td class="mono">' + esc(h.codigo) + '</td>' +
+    '<td class="mono">' + esc(h.plot) + '</td><td>' + esc(h.entry || '-') + '</td>' +
+    '<td class="mono">' + esc(h.gid || '-') + '</td><td>' + esc(h.rol || '-') + '</td>' +
+    '<td>' + esc(h.rango || '-') + '</td>' +
+    '<td><span class="' + cls + '">' + esc(h.resultado) + '</span></td>';
+  tb.prepend(tr);
+}
+
+$('scanCampo').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const codigo = norm($('scanCampo').value).toUpperCase();
+  $('scanCampo').value = '';
+  if (!codigo) return;
+
+  if (!campoMapaIndex.size) {
+    $('subCampo').innerHTML = '<span class="hl-bad">Carga primero un mapa.</span>';
+    return;
+  }
+
+  const reg = campoMapaIndex.get(codigo);
+  if (!reg) {
+    $('verdictCampo').className = 'verdict false';
+    $('verdictCampo').innerHTML = 'NO ENCONTRADO <small>El código "' + esc(codigo) + '" no existe en el mapa cargado</small>';
+    registrarHistorialCampo(codigo, null, 'NO ENCONTRADO');
+    actualizarContadoresCampo();
+    dbg('debugCampo', 'Escaneado "' + codigo + '" -> no coincide con ninguno de los ' + campoMapaIndex.size + ' alias de OBS_UNIT_ID cargados para esta localidad.');
+    return;
+  }
+
+  if (reg.estado === 'ok') {
+    $('verdictCampo').className = 'verdict false';
+    $('verdictCampo').innerHTML = 'YA ESCANEADO <small>Plot ' + esc(reg.plot) + ' ya había sido verificado</small>';
+    registrarHistorialCampo(codigo, reg, 'DUPLICADO');
+    actualizarContadoresCampo();
+    return;
+  }
+
+  // El orden se compara por PLOT (no por el valor de OBS_UNIT_ID escaneado)
+  // ya que un mismo Plot puede reconocerse por 3 alias distintos.
+  const plotEsperado = campoOrdenEsperado[campoPuntero];
+  if (String(reg.plot).toUpperCase() === plotEsperado) {
+    reg.estado = 'ok';
+    pintarCeldaCampo(reg, 'ok');
+    campoPuntero++;
+    $('verdictCampo').className = 'verdict true';
+    $('verdictCampo').innerHTML = 'OK <small>Plot ' + esc(reg.plot) + ' &middot; Entry ' + esc(reg.entry) +
+      (reg.tieneGid ? ' &middot; GID ' + esc(reg.gid) : '') + (reg.rol ? ' &middot; ' + esc(reg.rol) : '') + '</small>';
+    registrarHistorialCampo(codigo, reg, 'OK');
+  } else {
+    reg.estado = 'fuera_de_orden';
+    pintarCeldaCampo(reg, 'alerta');
+    const regEsperado = campoRegPorPlot.get(plotEsperado);
+    $('verdictCampo').className = 'verdict false';
+    $('verdictCampo').innerHTML = 'NO COINCIDE <small>Se esperaba Plot ' + esc(regEsperado ? regEsperado.plot : plotEsperado) + ', se escaneó Plot ' + esc(reg.plot) + '</small>';
+    registrarHistorialCampo(codigo, reg, 'NO COINCIDE (orden)');
+  }
+  actualizarContadoresCampo();
+  $('scanCampo').focus();
+});
+
+$('btnReiniciarCampo').addEventListener('click', () => {
+  campoRegPorPlot.forEach(reg => {
+    reg.estado = 'pendiente';
+        if (reg.tds) reg.tds.forEach(td => { td.classList.remove('ok', 'alerta'); td.classList.add('pendiente'); });
+  });
+  campoPuntero = 0;
+  campoHistorial = [];
+  document.querySelector('#histCampoTable tbody').innerHTML = '';
+  $('verdictCampo').className = 'verdict';
+  $('verdictCampo').textContent = 'Reiniciado. Escanee los sobres en orden.';
+  actualizarContadoresCampo();
+});
+
+$('btnExportCampo').addEventListener('click', () => {
+  if (!campoHistorial.length) { alert('No hay historial para exportar.'); return; }
+  const headers = ['Hora','Código escaneado','Plot','Entry','GID','Rol','Rango/Faja','Resultado'];
+  const rows = [headers.join(',')];
+  campoHistorial.forEach(h => {
+    const vals = [h.hora, h.codigo, h.plot, h.entry, h.gid, h.rol, h.rango, h.resultado];
+    rows.push(vals.map(v => '"' + String(v||'').replace(/"/g,'""') + '"').join(','));
+  });
+  const csv = '\uFEFF' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'verificacion_campo_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+});
 
 </script>
 </body>
