@@ -2306,6 +2306,24 @@ function parseCeldaMapaCampo(raw) {
     return { plot, plotNo, entry, gid, rol, tieneGid: !!gid };
   }
 
+  // Formato "PLOT_CODE<codigo>    GID: <gid>" (algunos exports Backcross/Self
+  // no ponen ":" después de "PLOT_CODE", solo lo pegan o lo separan por un
+  // espacio del código real -- por eso el regexPar de arriba no lo detecta,
+  // ya que exige ":" tras la etiqueta. Se ve en la práctica: unas fajas del
+  // mismo archivo traen "PLOT_CODE G4216 GID: 71756" (con espacio) y otras
+  // "PLOT_CODEG3981 GID: 71384" (sin espacio) -- \s* cubre ambos casos.
+  const mPlotCode = text.match(/PLOT_CODE\s*(\S+?)\s+GID:\s*(\S+)/i);
+  if (mPlotCode) {
+    return {
+      plot: mPlotCode[1],
+      plotNo: pares['plot no'] || '',
+      entry: pares['entry'] || '',
+      gid: mPlotCode[2],
+      rol: pares['role'] || pares['rol'] || '',
+      tieneGid: true
+    };
+  }
+
   // Formato "Plot-72\nEntry 21\nRep 2" (Finca / Registro / Screening / Parent Testing)
   const lineas = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   let plot2 = null, entry2 = '';
