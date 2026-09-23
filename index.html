@@ -170,6 +170,7 @@
     <button class="tab-btn" id="tabBtnCampo" onclick="showTab('campo')">Verificación Mapa Campo</button>
     <button class="tab-btn" id="tabBtnPaquete" onclick="showTab('paquete')">Verificación Envío CE&rarr;LAB</button>
     <button class="tab-btn" id="tabBtnLote" onclick="showTab('lote')">Almacenamiento LOT_UID x GID</button>
+    <button class="tab-btn" id="tabBtnBulk" onclick="showTab('bulk')">Verificación Bulk</button>
   </div>
 
   <div id="tabEscaneo" style="display:none">
@@ -561,6 +562,72 @@
     </table>
   </div>
 </div> <!-- /tabLote -->
+
+<div id="tabBulk" style="display:none">
+  <p style="font-size:.85rem;color:#666;margin:0 0 10px">
+    Antes de generar el GID de bulk en BMS, confirma que los sobres físicos que estás juntando corresponden
+    a los GID que forman esa mezcla. Sube el Excel del bulk (columnas NOMBRE BULK / GID / PESOS / #SEMILLAS)
+    y escanea el LOT_UID de cada sobre &mdash; se busca en el mismo catálogo de lotes de BMS (arriba) y se
+    compara el GID resultante contra la lista del bulk.
+  </p>
+
+  <div class="conn-card">
+    <div class="upload-row">
+      <input type="file" id="fileInputBulk" accept=".xlsx,.xls">
+      <span class="file-status" id="fileStatusBulk">Sube el Excel de bulk (ej. PRUEBA_BULK.xlsx).</span>
+    </div>
+  </div>
+
+  <div class="scan-box" style="max-width:420px">
+  <label>Escanear LOT_UID del sobre</label>
+  <input type="text" id="scanBulk" placeholder="Carga el archivo de bulk y el catálogo de lotes primero" autocomplete="off" disabled>
+  <div class="sub" id="subBulk"></div>
+  <button class="act" style="margin-top:6px" onclick="dispararEscaneoBulkDesdeInput()">Buscar</button>
+</div>
+
+  <div class="toolbar">
+    <button class="btn-load" id="btnIniciarCamaraBulk" onclick="iniciarEscaneoBulk()">Escanear con cámara</button>
+    <button class="btn-secondary" id="btnDetenerCamaraBulk" onclick="detenerEscaneoBulk(true)" style="display:none">Detener cámara</button>
+  </div>
+  <div id="readerBulk" style="max-width:340px;margin-top:6px;"></div>
+
+  <div class="verdict" id="verdictBulk">Cargue el archivo de bulk para comenzar</div>
+
+  <div id="multiBulkWrap" style="display:none; margin:10px 0;">
+    <div class="panel"><div>
+      <h3>Este GID tiene varias filas pendientes en el bulk &mdash; elige cuál corresponde</h3>
+      <div id="multiBulkLista"></div>
+    </div></div>
+  </div>
+
+  <div class="summary" id="summaryBulk" style="display:none;">
+    <div class="box total"><span class="n" id="sTotalBulk">0</span><span class="label">Filas totales</span></div>
+    <div class="box ok"><span class="n" id="sOkBulk">0</span><span class="label">Confirmadas</span></div>
+    <div class="box warn"><span class="n" id="sPendBulk">0</span><span class="label">Pendientes</span></div>
+    <div class="box bad"><span class="n" id="sAlertBulk">0</span><span class="label">Alertas</span></div>
+  </div>
+
+  <div class="toolbar">
+    <button class="act" id="btnReiniciarBulk" onclick="reiniciarBulk()">Reiniciar verificación</button>
+    <button class="act" id="btnExportBulk" onclick="exportarBulk()">Exportar historial (CSV)</button>
+  </div>
+
+  <h2>Lista del Bulk</h2>
+  <div class="table-wrap">
+    <table id="tablaBulkTable">
+      <thead><tr><th>NOMBRE BULK</th><th>GID</th><th>Peso esperado</th><th>#Semillas esperado</th><th>Estado</th><th>LOT_UID escaneado</th><th>Hora</th></tr></thead>
+      <tbody><tr><td colspan="7" style="color:#888;">La lista aparecerá aquí cuando cargue el archivo.</td></tr></tbody>
+    </table>
+  </div>
+
+  <h2>Historial de escaneos</h2>
+  <div class="table-wrap">
+    <table id="histBulkTable">
+      <thead><tr><th>Hora</th><th>LOT_UID escaneado</th><th>GID</th><th>Bulk</th><th>Peso esperado</th><th>Resultado</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div> <!-- /tabBulk -->
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -924,6 +991,10 @@ async function cargarLotesBMS() {
       document.getElementById('fileStatus').textContent = 'Listo. Sube el archivo Excel del listado crudo.';
       document.getElementById('btnProcesar').disabled = (sheetRows.length === 0);
       document.getElementById('btnDescargarInventario').disabled = false;
+      if (bulkRows.length) {
+        document.getElementById('scanBulk').disabled = false;
+        document.getElementById('scanBulk').placeholder = 'Escanee el LOT_UID del sobre';
+      }
     }
   } catch (e) {
     statusEl.innerHTML = '<span class="hl-bad">Error: ' + e.message + '</span>';
@@ -1501,6 +1572,8 @@ function showTab(tab) {
   $('tabBtnPaquete').classList.toggle('active', tab === 'paquete');
   $('tabLote').style.display = (tab === 'lote') ? '' : 'none';
   $('tabBtnLote').classList.toggle('active', tab === 'lote');
+  $('tabBulk').style.display = (tab === 'bulk') ? '' : 'none';
+  $('tabBtnBulk').classList.toggle('active', tab === 'bulk');
 }
 
 
@@ -3578,6 +3651,367 @@ async function detenerEscaneoLote(manual) {
   }
   $('btnIniciarCamaraLote').style.display = 'inline-block';
   $('btnDetenerCamaraLote').style.display = 'none';
+}
+
+/* =========================================================================
+   VERIFICACIÓN BULK (pre-generación de GID de bulk)
+   Reutiliza el mismo lotIndex (LOT_UID -> GID) que ya carga
+   "Cargar lotes desde BMS" -- no hace llamadas nuevas a BMS. Un mismo GID
+   puede repetirse en varias filas del mismo bulk (varios sobres/lotes
+   aportando al mismo bulk con pesos distintos) -- por eso bulkGidIndex
+   guarda un ARRAY de filas por GID; si hay más de una fila pendiente para
+   ese GID se pide elegir cuál corresponde (igual que el selector de
+   "varios lotes" de Almacenamiento LOT_UID x GID).
+   ========================================================================= */
+
+let bulkRows = [];
+let bulkGidIndex = new Map();
+let bulkHistorial = [];
+let pendienteMultiBulk = null;
+let html5QrCodeBulk = null;
+
+$('fileInputBulk').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if (!file) return;
+  $('fileStatusBulk').innerHTML = 'Leyendo archivo&hellip;';
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+      procesarBulkExcel(rows);
+    } catch (err) {
+      $('fileStatusBulk').innerHTML = '<span class="hl-bad">Error leyendo el archivo: ' + esc(err.message || err) + '</span>';
+    }
+  };
+  reader.onerror = () => { $('fileStatusBulk').innerHTML = '<span class="hl-bad">No se pudo leer el archivo.</span>'; };
+  reader.readAsArrayBuffer(file);
+});
+
+function procesarBulkExcel(rows) {
+  let headerIdx = -1, colNombre = -1, colGid = -1, colPeso = -1, colSemillas = -1;
+  const maxScan = Math.min(rows.length, 30);
+  for (let r = 0; r < maxScan; r++) {
+    const row = rows[r] || [];
+    let tieneNombre = false, tieneGid = false;
+    let cn = -1, cg = -1, cp = -1, cs = -1;
+    row.forEach((c, i) => {
+      const k = key(c);
+      if (!k) return;
+      if (k.indexOf('NOMBRE') !== -1 && k.indexOf('BULK') !== -1) { cn = i; tieneNombre = true; }
+      else if (k === 'GID') { cg = i; tieneGid = true; }
+      else if (k.indexOf('PESO') !== -1) { cp = i; }
+      else if (k.indexOf('SEMIL') !== -1) { cs = i; }
+    });
+    if (tieneNombre && tieneGid) { headerIdx = r; colNombre = cn; colGid = cg; colPeso = cp; colSemillas = cs; break; }
+  }
+  if (headerIdx === -1) {
+    $('fileStatusBulk').innerHTML = '<span class="hl-bad">No se encontraron las columnas "NOMBRE BULK" y "GID" en este archivo.</span>';
+    return;
+  }
+
+  bulkRows = [];
+  bulkGidIndex = new Map();
+  let id = 0;
+  for (let r = headerIdx + 1; r < rows.length; r++) {
+    const row = rows[r] || [];
+    const nombreBulk = norm(row[colNombre]);
+    const gid = norm(row[colGid]).replace(/\.0$/, '');
+    if (!nombreBulk && !gid) break;
+    if (!gid) continue;
+    const item = {
+      id: id++, nombreBulk, gid,
+      pesoEsperado: colPeso >= 0 ? norm(row[colPeso]) : '',
+      semillasEsperado: colSemillas >= 0 ? norm(row[colSemillas]) : '',
+      estado: 'pendiente', lotUid: '', hora: '', tr: null
+    };
+    bulkRows.push(item);
+    if (!bulkGidIndex.has(gid)) bulkGidIndex.set(gid, []);
+    bulkGidIndex.get(gid).push(item);
+  }
+
+  if (!bulkRows.length) {
+    $('fileStatusBulk').innerHTML = '<span class="hl-bad">Se encontró el encabezado pero no hay filas de datos debajo.</span>';
+    return;
+  }
+
+  bulkHistorial = [];
+  document.querySelector('#histBulkTable tbody').innerHTML = '';
+  const nBulks = new Set(bulkRows.map(r => r.nombreBulk)).size;
+  $('fileStatusBulk').innerHTML = '<span class="hl-ok">Cargado:</span> ' + bulkRows.length + ' fila(s) &middot; ' + nBulks + ' bulk(s) distinto(s).';
+
+  $('scanBulk').disabled = !lotIndex.size;
+  $('scanBulk').placeholder = lotIndex.size ? 'Escanee el LOT_UID del sobre' : 'Carga el catálogo de lotes (arriba) primero';
+  $('summaryBulk').style.display = 'flex';
+  renderTablaBulk();
+  renderHistorialBulk();
+  actualizarContadoresBulk();
+  $('verdictBulk').className = 'verdict';
+  $('verdictBulk').textContent = 'Listo. Escanee el primer sobre.';
+  if (lotIndex.size) $('scanBulk').focus();
+}
+
+function badgeBulk(row) {
+  return row.estado === 'ok' ? '<span class="badge-true">Confirmado</span>' : '<span class="badge-false">Pendiente</span>';
+}
+
+function renderTablaBulk() {
+  const tbody = document.querySelector('#tablaBulkTable tbody');
+  tbody.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  bulkRows.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + esc(row.nombreBulk) + '</td>' +
+      '<td class="mono">' + esc(row.gid) + '</td>' +
+      '<td>' + esc(row.pesoEsperado || '-') + '</td>' +
+      '<td>' + esc(row.semillasEsperado || '-') + '</td>' +
+      '<td class="estadoCell">' + badgeBulk(row) + '</td>' +
+      '<td class="lotCell mono">' + esc(row.lotUid || '') + '</td>' +
+      '<td class="horaCell">' + esc(row.hora || '') + '</td>';
+    row.tr = tr;
+    frag.appendChild(tr);
+  });
+  tbody.appendChild(frag);
+}
+
+function pintarFilaBulk(row) {
+  if (!row.tr) return;
+  row.tr.querySelector('.estadoCell').innerHTML = badgeBulk(row);
+  row.tr.querySelector('.lotCell').textContent = row.lotUid || '';
+  row.tr.querySelector('.horaCell').textContent = row.hora || '';
+}
+
+function pintarVerdictoBulk(clase, titulo, detalle) {
+  $('verdictBulk').className = 'verdict' + (clase ? ' ' + clase : '');
+  $('verdictBulk').innerHTML = titulo + (detalle ? ' <small>' + detalle + '</small>' : '');
+}
+
+let bulkAutoTimer = null;
+
+function dispararEscaneoBulkDesdeInput() {
+  if (bulkAutoTimer) { clearTimeout(bulkAutoTimer); bulkAutoTimer = null; }
+  const code = norm($('scanBulk').value);
+  if (!code) return;
+  procesarEscaneoBulk(code);
+  $('scanBulk').value = '';
+  $('scanBulk').focus();
+}
+
+// Disparo inmediato si el lector SÍ manda Enter/Tab al final.
+$('scanBulk').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== 'Tab') return;
+  e.preventDefault();
+  dispararEscaneoBulkDesdeInput();
+});
+
+// Disparo automático por velocidad de escritura: un lector de código de
+// barras escribe todos los caracteres casi de golpe (mucho más rápido que
+// una persona), así que si dejan de llegar caracteres nuevos por ~200ms
+// asumimos que el escaneo terminó y procesamos solo, sin esperar Enter/Tab
+// ni que el usuario haga clic en otro lado.
+$('scanBulk').addEventListener('input', () => {
+  if (bulkAutoTimer) clearTimeout(bulkAutoTimer);
+  bulkAutoTimer = setTimeout(() => {
+    if (norm($('scanBulk').value)) dispararEscaneoBulkDesdeInput();
+  }, 200);
+});
+
+// Respaldo: si de todos modos pierde el foco con contenido pendiente.
+$('scanBulk').addEventListener('blur', () => {
+  if (norm($('scanBulk').value)) dispararEscaneoBulkDesdeInput();
+});
+
+function procesarEscaneoBulk(codigoRaw) {
+  const code = norm(codigoRaw);
+  if (!code) return;
+  if (!bulkRows.length) { $('subBulk').innerHTML = '<span class="hl-bad">Cargue primero el archivo de bulk.</span>'; return; }
+  if (!lotIndex.size) { $('subBulk').innerHTML = '<span class="hl-bad">Carga primero el catálogo de lotes desde BMS (arriba).</span>'; return; }
+  ocultarMultiBulk();
+  $('subBulk').innerHTML = '';
+  const hora = new Date().toLocaleTimeString();
+
+  const hit = lotIndex.get(code.toUpperCase());
+  if (!hit) {
+    pintarVerdictoBulk('false', 'NO ENCONTRADO EN INVENTARIO', 'El LOT_UID "' + esc(code) + '" no está en el catálogo de lotes de BMS');
+    agregarHistorialBulk({ hora, lotUid: code, gid: '', nombreBulk: '', pesoEsperado: '', resultado: 'LOT_UID NO ENCONTRADO' });
+    return;
+  }
+
+  const gid = hit.gid;
+  const candidatos = (bulkGidIndex.get(gid) || []).filter(r => r.estado === 'pendiente');
+
+  if (!candidatos.length) {
+    if (bulkGidIndex.has(gid)) {
+      pintarVerdictoBulk('false', 'YA CONFIRMADO', 'Todas las filas del GID ' + esc(gid) + ' en este bulk ya fueron escaneadas');
+      agregarHistorialBulk({ hora, lotUid: code, gid, nombreBulk: '', pesoEsperado: '', resultado: 'DUPLICADO' });
+    } else {
+      pintarVerdictoBulk('false', 'GID NO PERTENECE A ESTE BULK', 'LOT_UID ' + esc(code) + ' &rarr; GID ' + esc(gid) + (hit.desig ? ' (' + esc(hit.desig) + ')' : '') + ' no está en la lista cargada');
+      agregarHistorialBulk({ hora, lotUid: code, gid, nombreBulk: '', pesoEsperado: '', resultado: 'NO PERTENECE' });
+    }
+    return;
+  }
+
+  if (candidatos.length === 1) {
+    confirmarFilaBulk(candidatos[0], code, hit, hora);
+    return;
+  }
+  mostrarMultiBulk(gid, candidatos, code, hit, hora);
+}
+
+function confirmarFilaBulk(row, lotUid, hit, hora) {
+  row.estado = 'ok';
+  row.lotUid = lotUid;
+  row.hora = hora;
+  pintarFilaBulk(row);
+  pintarVerdictoBulk('true', 'OK &middot; ' + esc(row.nombreBulk),
+    'GID ' + esc(row.gid) + (hit.desig ? ' (' + esc(hit.desig) + ')' : '') +
+    ' &middot; Peso esperado: ' + esc(row.pesoEsperado || '-') +
+    (row.semillasEsperado ? ' &middot; #Semillas: ' + esc(row.semillasEsperado) : ''));
+  agregarHistorialBulk({ hora, lotUid, gid: row.gid, nombreBulk: row.nombreBulk, pesoEsperado: row.pesoEsperado, resultado: 'OK' });
+  actualizarContadoresBulk();
+}
+
+function mostrarMultiBulk(gid, candidatos, lotUid, hit, hora) {
+  pintarVerdictoBulk('', 'GID ' + esc(gid) + ' tiene ' + candidatos.length + ' filas pendientes', 'elige a cuál corresponde este sobre');
+  const html = candidatos.map(r =>
+    '<div class="kv" style="padding:8px 0;border-bottom:1px solid var(--line)">' +
+    '<b>Bulk</b><span>' + esc(r.nombreBulk) + '</span>' +
+    '<b>Peso esperado</b><span>' + esc(r.pesoEsperado || '&mdash;') + '</span>' +
+    '<b>#Semillas</b><span>' + esc(r.semillasEsperado || '&mdash;') + '</span>' +
+    '<b></b><span><button class="act" onclick="elegirFilaBulk(' + r.id + ')">Usar esta fila</button></span>' +
+    '</div>'
+  ).join('');
+  $('multiBulkLista').innerHTML = html;
+  $('multiBulkWrap').style.display = '';
+  pendienteMultiBulk = { gid, lotUid, hit, hora };
+}
+
+function elegirFilaBulk(rowId) {
+  if (!pendienteMultiBulk) return;
+  const row = bulkRows.find(r => r.id === rowId && r.estado === 'pendiente');
+  const { lotUid, hit, hora } = pendienteMultiBulk;
+  ocultarMultiBulk();
+  if (!row) return;
+  confirmarFilaBulk(row, lotUid, hit, hora);
+}
+
+function ocultarMultiBulk() {
+  $('multiBulkWrap').style.display = 'none';
+  $('multiBulkLista').innerHTML = '';
+  pendienteMultiBulk = null;
+}
+
+function agregarHistorialBulk(reg) {
+  bulkHistorial.unshift(reg);
+  renderHistorialBulk();
+  actualizarContadoresBulk();
+}
+
+function renderHistorialBulk() {
+  const tbody = document.querySelector('#histBulkTable tbody');
+  tbody.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  bulkHistorial.slice(0, 300).forEach(h => {
+    const tr = document.createElement('tr');
+    const cls = h.resultado === 'OK' ? 'badge-true' : 'badge-false';
+    tr.innerHTML =
+      '<td>' + esc(h.hora) + '</td>' +
+      '<td class="mono">' + esc(h.lotUid) + '</td>' +
+      '<td class="mono">' + esc(h.gid || '-') + '</td>' +
+      '<td>' + esc(h.nombreBulk || '-') + '</td>' +
+      '<td>' + esc(h.pesoEsperado || '-') + '</td>' +
+      '<td><span class="' + cls + '">' + esc(h.resultado) + '</span></td>';
+    frag.appendChild(tr);
+  });
+  tbody.appendChild(frag);
+}
+
+function actualizarContadoresBulk() {
+  const total = bulkRows.length;
+  const ok = bulkRows.filter(r => r.estado === 'ok').length;
+  const pend = total - ok;
+  const alertas = bulkHistorial.filter(h => h.resultado === 'NO PERTENECE' || h.resultado === 'DUPLICADO' || h.resultado === 'LOT_UID NO ENCONTRADO').length;
+  $('sTotalBulk').textContent = total;
+  $('sOkBulk').textContent = ok;
+  $('sPendBulk').textContent = pend;
+  $('sAlertBulk').textContent = alertas;
+}
+
+function reiniciarBulk() {
+  if (!bulkRows.length) return;
+  if (!confirm('¿Reiniciar todas las filas a Pendiente y borrar el historial de esta sesión?')) return;
+  bulkRows.forEach(r => { r.estado = 'pendiente'; r.lotUid = ''; r.hora = ''; });
+  bulkHistorial = [];
+  ocultarMultiBulk();
+  renderTablaBulk();
+  renderHistorialBulk();
+  actualizarContadoresBulk();
+  $('verdictBulk').className = 'verdict';
+  $('verdictBulk').textContent = 'Reiniciado. Escanee los sobres.';
+  $('subBulk').innerHTML = '';
+}
+
+function exportarBulk() {
+  if (!bulkRows.length) { alert('Cargue el archivo de bulk primero.'); return; }
+  const headers = ['NOMBRE BULK', 'GID', 'Peso esperado', '#Semillas esperado', 'Estado', 'LOT_UID escaneado', 'Hora'];
+  const rows = [headers.join(',')];
+  bulkRows.forEach(r => {
+    const vals = [r.nombreBulk, r.gid, r.pesoEsperado, r.semillasEsperado, r.estado === 'ok' ? 'CONFIRMADO' : 'PENDIENTE', r.lotUid, r.hora];
+    rows.push(vals.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(','));
+  });
+  const alertas = bulkHistorial.filter(h => h.resultado !== 'OK');
+  if (alertas.length) {
+    rows.push('');
+    rows.push('"ALERTAS DURANTE EL ESCANEO"');
+    rows.push(['Hora', 'LOT_UID', 'GID', 'Resultado'].join(','));
+    alertas.forEach(h => rows.push(['"' + h.hora + '"', '"' + String(h.lotUid).replace(/"/g, '""') + '"', '"' + String(h.gid || '').replace(/"/g, '""') + '"', '"' + h.resultado + '"'].join(',')));
+  }
+  const csv = '\uFEFF' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'verificacion_bulk_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+}
+
+async function iniciarEscaneoBulk() {
+  if (!bulkRows.length) { $('subBulk').innerHTML = '<span class="hl-bad">Cargue primero el archivo de bulk.</span>'; return; }
+  if (!lotIndex.size) { $('subBulk').innerHTML = '<span class="hl-bad">Carga primero el catálogo de lotes.</span>'; return; }
+  $('btnIniciarCamaraBulk').style.display = 'none';
+  $('btnDetenerCamaraBulk').style.display = 'inline-block';
+  $('subBulk').innerHTML = 'Apunta la cámara al código del sobre...';
+  html5QrCodeBulk = new Html5Qrcode('readerBulk');
+  try {
+    await html5QrCodeBulk.start(
+      { facingMode: 'environment' },
+      {
+        fps: 10, qrbox: 250,
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_93, Html5QrcodeSupportedFormats.QR_CODE
+        ]
+      },
+      (decodedText) => {
+        procesarEscaneoBulk(String(decodedText).trim());
+        detenerEscaneoBulk(false);
+      }
+    );
+  } catch (e) {
+    $('subBulk').innerHTML = '<span class="hl-bad">No se pudo iniciar la cámara: ' + esc((e && (e.message || e.name)) || 'error desconocido') + '</span>';
+    $('btnIniciarCamaraBulk').style.display = 'inline-block';
+    $('btnDetenerCamaraBulk').style.display = 'none';
+  }
+}
+
+async function detenerEscaneoBulk(manual) {
+  if (html5QrCodeBulk) {
+    try { await html5QrCodeBulk.stop(); html5QrCodeBulk.clear(); } catch (e) {}
+    html5QrCodeBulk = null;
+  }
+  $('btnIniciarCamaraBulk').style.display = 'inline-block';
+  $('btnDetenerCamaraBulk').style.display = 'none';
 }
 
 </script>
