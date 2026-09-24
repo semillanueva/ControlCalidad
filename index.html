@@ -127,7 +127,7 @@
   /* ===== Verificación Campo ===== */
   .cell-campo { text-align:center; font-size:.72rem; line-height:1.5; border:1px solid var(--line); white-space:nowrap; }
   .cell-campo.pendiente { background:#eef0f2; }
-  .cell-campo.ok { background:var(--okbg); }
+  .cell-campo.ok { background:var(--accent); color:#fff; font-weight:700; border-color:#0e4a2b; }
   .cell-campo.alerta { background:var(--badbg); }
 </style>
 </head>
@@ -170,7 +170,6 @@
     <button class="tab-btn" id="tabBtnCampo" onclick="showTab('campo')">Verificación Mapa Campo</button>
     <button class="tab-btn" id="tabBtnPaquete" onclick="showTab('paquete')">Verificación Envío CE&rarr;LAB</button>
     <button class="tab-btn" id="tabBtnLote" onclick="showTab('lote')">Almacenamiento LOT_UID x GID</button>
-    <button class="tab-btn" id="tabBtnBulk" onclick="showTab('bulk')">Verificación Bulk</button>
   </div>
 
   <div id="tabEscaneo" style="display:none">
@@ -413,7 +412,8 @@
 
   <div class="toolbar">
     <button class="act" id="btnReiniciarCampo">Reiniciar verificación</button>
-    <button class="act" id="btnExportCampo">Exportar historial (CSV)</button>
+    <button class="act" id="btnExportCampoExcel">Exportar mapa (Excel)</button>
+    <button class="act" id="btnExportCampoPDF">Exportar mapa (PDF)</button>
   </div>
 
   <h2>Mapa</h2>
@@ -562,76 +562,16 @@
     </table>
   </div>
 </div> <!-- /tabLote -->
-
-<div id="tabBulk" style="display:none">
-  <p style="font-size:.85rem;color:#666;margin:0 0 10px">
-    Antes de generar el GID de bulk en BMS, confirma que los sobres físicos que estás juntando corresponden
-    a los GID que forman esa mezcla. Sube el Excel del bulk (columnas NOMBRE BULK / GID / PESOS / #SEMILLAS)
-    y escanea el LOT_UID de cada sobre &mdash; se busca en el mismo catálogo de lotes de BMS (arriba) y se
-    compara el GID resultante contra la lista del bulk.
-  </p>
-
-  <div class="conn-card">
-    <div class="upload-row">
-      <input type="file" id="fileInputBulk" accept=".xlsx,.xls">
-      <span class="file-status" id="fileStatusBulk">Sube el Excel de bulk (ej. PRUEBA_BULK.xlsx).</span>
-    </div>
-  </div>
-
-  <div class="scan-box" style="max-width:420px">
-  <label>Escanear LOT_UID del sobre</label>
-  <input type="text" id="scanBulk" placeholder="Carga el archivo de bulk y el catálogo de lotes primero" autocomplete="off" disabled>
-  <div class="sub" id="subBulk"></div>
-  <button class="act" style="margin-top:6px" onclick="dispararEscaneoBulkDesdeInput()">Buscar</button>
-</div>
-
-  <div class="toolbar">
-    <button class="btn-load" id="btnIniciarCamaraBulk" onclick="iniciarEscaneoBulk()">Escanear con cámara</button>
-    <button class="btn-secondary" id="btnDetenerCamaraBulk" onclick="detenerEscaneoBulk(true)" style="display:none">Detener cámara</button>
-  </div>
-  <div id="readerBulk" style="max-width:340px;margin-top:6px;"></div>
-
-  <div class="verdict" id="verdictBulk">Cargue el archivo de bulk para comenzar</div>
-
-  <div id="multiBulkWrap" style="display:none; margin:10px 0;">
-    <div class="panel"><div>
-      <h3>Este GID tiene varias filas pendientes en el bulk &mdash; elige cuál corresponde</h3>
-      <div id="multiBulkLista"></div>
-    </div></div>
-  </div>
-
-  <div class="summary" id="summaryBulk" style="display:none;">
-    <div class="box total"><span class="n" id="sTotalBulk">0</span><span class="label">Filas totales</span></div>
-    <div class="box ok"><span class="n" id="sOkBulk">0</span><span class="label">Confirmadas</span></div>
-    <div class="box warn"><span class="n" id="sPendBulk">0</span><span class="label">Pendientes</span></div>
-    <div class="box bad"><span class="n" id="sAlertBulk">0</span><span class="label">Alertas</span></div>
-  </div>
-
-  <div class="toolbar">
-    <button class="act" id="btnReiniciarBulk" onclick="reiniciarBulk()">Reiniciar verificación</button>
-    <button class="act" id="btnExportBulk" onclick="exportarBulk()">Exportar historial (CSV)</button>
-  </div>
-
-  <h2>Lista del Bulk</h2>
-  <div class="table-wrap">
-    <table id="tablaBulkTable">
-      <thead><tr><th>NOMBRE BULK</th><th>GID</th><th>Peso esperado</th><th>#Semillas esperado</th><th>Estado</th><th>LOT_UID escaneado</th><th>Hora</th></tr></thead>
-      <tbody><tr><td colspan="7" style="color:#888;">La lista aparecerá aquí cuando cargue el archivo.</td></tr></tbody>
-    </table>
-  </div>
-
-  <h2>Historial de escaneos</h2>
-  <div class="table-wrap">
-    <table id="histBulkTable">
-      <thead><tr><th>Hora</th><th>LOT_UID escaneado</th><th>GID</th><th>Bulk</th><th>Peso esperado</th><th>Resultado</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-</div> <!-- /tabBulk -->
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<!-- La lectura de Excel usa SheetJS (arriba); para ESCRIBIR con colores de celda
+     (mapa exportado con verde de validación) se necesita ExcelJS, ya que la
+     build community de SheetJS no soporta escribir estilos. -->
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@5.0.8/dist/jspdf.plugin.autotable.min.js"></script>
 <script>
 /* =========================================================================
    CONEXION A BMS
@@ -991,10 +931,6 @@ async function cargarLotesBMS() {
       document.getElementById('fileStatus').textContent = 'Listo. Sube el archivo Excel del listado crudo.';
       document.getElementById('btnProcesar').disabled = (sheetRows.length === 0);
       document.getElementById('btnDescargarInventario').disabled = false;
-      if (bulkRows.length) {
-        document.getElementById('scanBulk').disabled = false;
-        document.getElementById('scanBulk').placeholder = 'Escanee el LOT_UID del sobre';
-      }
     }
   } catch (e) {
     statusEl.innerHTML = '<span class="hl-bad">Error: ' + e.message + '</span>';
@@ -1052,12 +988,22 @@ function indexarLote(rec) {
 
   const anio = extraerAnioLote(rec);
 
+    // Estatus del lote (Activo/Inactivo): BMS trae "status" en el lote crudo;
+  // ya lo usamos más abajo (anyOpen) comparando contra "CLOSED". Aquí lo
+  // guardamos también por lote individual para poder exportarlo. Si al
+  // validar contra BMS real ves valores distintos a "CLOSED", ajusta esta
+  // comparación.
+  const estatusRaw = (rec.status !== undefined && rec.status !== null) ? String(rec.status) : '';
+  const activo = estatusRaw ? (estatusRaw.toUpperCase() !== 'CLOSED') : null; // null = sin dato
+
   if (lotUID) lotIndex.set(String(lotUID).toUpperCase(),{
     lotUID: String(lotUID), gid, desig,
     peso: isNaN(pesoNum) ? '' : pesoNum,
     ubicacion,
     unidad,
-    anio
+    anio,
+    estatusRaw,
+    activo
   });
 
   // Índice inverso GID -> lotes, para "Asignar LOT_UID por GID" (envelope
@@ -1114,7 +1060,9 @@ function descargarInventarioBMS(){
       'Peso Actual': lot.peso,
       'Unidad': lot.unidad,
       'Año Creación': lot.anio,
-      'Ubicación': lot.ubicacion
+      'Ubicación': lot.ubicacion,
+      'Estatus': lot.activo === null ? '(sin dato)' : (lot.activo ? 'Activo' : 'Inactivo'),
+      'Estatus (crudo BMS)': lot.estatusRaw
     });
   });
 
@@ -1572,8 +1520,6 @@ function showTab(tab) {
   $('tabBtnPaquete').classList.toggle('active', tab === 'paquete');
   $('tabLote').style.display = (tab === 'lote') ? '' : 'none';
   $('tabBtnLote').classList.toggle('active', tab === 'lote');
-  $('tabBulk').style.display = (tab === 'bulk') ? '' : 'none';
-  $('tabBtnBulk').classList.toggle('active', tab === 'bulk');
 }
 
 
@@ -2351,6 +2297,10 @@ let campoPuntero = 0;
 let campoHistorial = [];
 let campoTieneGid = false;
 let campoObsIndex = new Map();  // PLOT_CODE o PLOT_NO (mayúsculas) -> [alias de OBS_UNIT_ID], para la localidad activa
+let campoGridTds = [];  // [{label, tds:[<td>|null,...]}] -- mismo layout visual del grid, en orden,
+                         // para que los exportadores (Excel/PDF) sean un espejo exacto de lo que
+                         // se ve en pantalla (incluyendo el estado de verificación actual) sin
+                         // tener que volver a parsear el Excel original.
 
 // Extrae pares "Etiqueta: Valor" en cualquier orden -- funciona tanto para
 // "Plot:X GID:Y Role:Z Entry:W" (Backcross) como para
@@ -2463,29 +2413,45 @@ function extraerEstudioCampo(rows) {
 // que en algunos libros (ej. Backcross) la cuadrícula viene corrida una
 // columna a la derecha -- y arma la lista de celdas entre el primer y el
 // último encabezado encontrado.
+// Encabezado de la cuadrícula: acepta "Rows"/"Surcos" solos (como antes) y
+// también etiquetas compuestas bilingües como "Row \ Surco", "Row/Surco",
+// "Rows / Surcos" (visto en el mapa CROSS) -- cualquier combinación de las
+// dos palabras separadas por "/" o "\", o una sola de ellas.
+function esEncabezadoGridMapaCampo(v) {
+  const t = String(v ?? '').trim().toLowerCase();
+  return /^(rows?|surcos?)(\s*[\\/]\s*(rows?|surcos?))?$/.test(t);
+}
+
 function parseGridMapaCampo(rows) {
   let headerCol = -1;
   const headerIdxs = [];
   rows.forEach((row, i) => {
     if (!row) return;
     for (let c = 0; c < row.length; c++) {
-      const v = String(row[c] ?? '').trim().toLowerCase();
-      if (v === 'rows' || v === 'surcos') {
+      if (esEncabezadoGridMapaCampo(row[c])) {
         headerIdxs.push(i);
         if (headerCol === -1) headerCol = c;
         return;
       }
     }
   });
-  if (headerIdxs.length < 2 || headerCol === -1) return null;
+  if (!headerIdxs.length || headerCol === -1) return null;
 
   const inicio = headerIdxs[0];
-  const fin = headerIdxs[headerIdxs.length - 1];
+  // Algunos exports (Self) repiten la fila de encabezado al final de la
+  // cuadrícula como cierre -- si aparece una segunda vez se usa como límite,
+  // igual que antes. Si no se repite (mapa CROSS: el encabezado solo va
+  // arriba), se procesa hasta el final de la hoja.
+  const fin = headerIdxs.length >= 2 ? headerIdxs[headerIdxs.length - 1] : rows.length;
   const headerRow = rows[inicio] || [];
   const columnas = [];
   for (let c = headerCol + 1; c < headerRow.length; c++) {
     const v = headerRow[c];
-    if (v !== '' && v != null && !isNaN(Number(v))) columnas.push(c);
+    if (v === '' || v == null) continue;
+    // Acepta encabezados numéricos puros (1, 2, 3...) y también con la
+    // dirección de siembra pegada, como en mapas serpentín ("1 UP",
+    // "2 DOWN"): basta con que empiece con un número.
+    if (/^\d+/.test(String(v).trim())) columnas.push(c);
   }
   if (!columnas.length) return null;
 
@@ -2494,6 +2460,7 @@ function parseGridMapaCampo(rows) {
     const row = rows[i] || [];
     const label = String(row[headerCol] ?? '').trim();
     if (!label) continue;
+    if (esEncabezadoGridMapaCampo(label)) continue; // fila de cierre repetida
     filas.push({ label, celdas: columnas.map(c => row[c]) });
   }
   if (!filas.length) return null;
@@ -2759,6 +2726,7 @@ async function cargarMapaCampo(loc) {
   campoPuntero = 0;
   campoHistorial = [];
   campoTieneGid = false;
+  campoGridTds = [];
   document.querySelector('#histCampoTable tbody').innerHTML = '';
 
   const wrap = $('gridWrapCampo');
@@ -2777,12 +2745,16 @@ async function cargarMapaCampo(loc) {
     tdLabel.style.fontWeight = '700';
     tr.appendChild(tdLabel);
 
+    const filaTds = [];
+    campoGridTds.push({ label: fila.label, tds: filaTds });
+
     fila.celdas.forEach(raw => {
       const td = document.createElement('td');
       const parsed = parseCeldaMapaCampo(raw);
       if (!parsed) {
         td.innerHTML = '&nbsp;';
         tr.appendChild(td);
+        filaTds.push(null);
         return;
       }
       if (parsed.tieneGid) campoTieneGid = true;
@@ -2810,6 +2782,7 @@ async function cargarMapaCampo(loc) {
         campoOrdenEsperado.push(codigo);
       }
 
+      filaTds.push(td);
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
@@ -2970,20 +2943,260 @@ $('btnReiniciarCampo').addEventListener('click', () => {
   actualizarContadoresCampo();
 });
 
-$('btnExportCampo').addEventListener('click', () => {
-  if (!campoHistorial.length) { alert('No hay historial para exportar.'); return; }
-  const headers = ['Hora','Código escaneado','Plot','Entry','GID','Rol','Rango/Faja','Resultado'];
-  const rows = [headers.join(',')];
-  campoHistorial.forEach(h => {
-    const vals = [h.hora, h.codigo, h.plot, h.entry, h.gid, h.rol, h.rango, h.resultado];
-    rows.push(vals.map(v => '"' + String(v||'').replace(/"/g,'""') + '"').join(','));
+/* -------------------------------------------------------------------------
+   Exportar mapa (Excel / PDF) -- ambos leen campoGridTds + campoRegPorPlot,
+   es decir, EXACTAMENTE el grid pintado en pantalla en este momento (mismo
+   layout Faja x Surco, mismo estado de verificación por celda). No vuelven
+   a parsear el Excel original ni dependen del historial de escaneos, así
+   que el archivo exportado es un espejo fiel de lo que se ve.
+   ------------------------------------------------------------------- */
+
+function contarEstadosCampo() {
+  let ok = 0, alertas = 0;
+  campoRegPorPlot.forEach(r => {
+    if (r.estado === 'ok') ok++;
+    else if (r.estado !== 'pendiente') alertas++;
   });
-  const csv = '\uFEFF' + rows.join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const total = campoRegPorPlot.size;
+  return { ok, alertas, pendientes: total - ok - alertas, total };
+}
+
+// [{label, celdas:[{plot,entry,gid,rol,tieneGid,estado}|null,...]}] leído
+// directamente de los <td> ya pintados (null = celda vacía del mapa original).
+function obtenerGridExportCampo() {
+  return campoGridTds.map(fila => ({
+    label: fila.label,
+    celdas: fila.tds.map(td => {
+      if (!td || !td.dataset.plot) return null;
+      const registro = campoRegPorPlot.get(td.dataset.plot);
+      if (!registro) return null;
+      return { plot: registro.plot, plotNo: registro.plotNo, entry: registro.entry, gid: registro.gid,
+               rol: registro.rol, tieneGid: registro.tieneGid, estado: registro.estado };
+    })
+  }));
+}
+
+function textoCeldaCampo(c) {
+  if (!c) return '';
+  let txt = 'Plot: ' + c.plot;
+  if (c.plotNo) txt += '\n' + 'Plot No: ' + c.plotNo;
+  if (c.entry) txt += '\n' + 'Entry: ' + c.entry;
+  if (c.tieneGid) txt += '\n' + 'GID: ' + c.gid;
+  if (c.rol) txt += '\n' + c.rol;
+  return txt;
+}
+
+function nombreArchivoCampo(ext) {
+  const base = ((($('infoEstudioCampo').textContent || 'mapa') + '_' + ($('infoLocalidadCampo').textContent || ''))
+    .trim().replace(/[^\w-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''));
+  return 'mapa_campo_' + (base || 'export') + '_' + new Date().toISOString().slice(0, 10) + '.' + ext;
+}
+
+const COLOR_OK_HEX = '1F6F43';        // mismo verde fuerte del acento de la app
+const COLOR_ALERTA_HEX = 'FCE8E6';
+const COLOR_PEND_HEX = 'EEF0F2';
+const COLOR_BANNER_INCOMPLETO_HEX = '9A6700';
+
+$('btnExportCampoExcel').addEventListener('click', async () => {
+  if (!campoGridTds.length) { alert('Cargue un mapa primero.'); return; }
+  const filas = obtenerGridExportCampo();
+  const numColumnas = filas.length ? filas[0].celdas.length : 0;
+  const { ok, alertas, pendientes, total } = contarEstadosCampo();
+  const validado = total > 0 && ok === total;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Control de Calidad — Semilla Nueva';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('Mapa', { views: [{ state: 'frozen', ySplit: 6 }] });
+
+  const addInfo = (label, value) => { const r = ws.addRow([label, value]); r.getCell(1).font = { bold: true }; };
+  addInfo('Estudio', $('infoEstudioCampo').textContent || '—');
+  addInfo('Localidad', $('infoLocalidadCampo').textContent || '—');
+  addInfo('Tipo', $('infoTipoCampo').textContent || '—');
+  addInfo('Fecha de exportación', new Date().toLocaleString());
+
+  const bannerTexto = validado
+    ? '✔ MAPA VALIDADO — ' + ok + '/' + total + ' plots verificados OK'
+    : 'Verificación en progreso — OK: ' + ok + '  ·  Pendientes: ' + pendientes + '  ·  Alertas: ' + alertas + '  ·  Total: ' + total;
+  const bannerRow = ws.addRow([bannerTexto]);
+  ws.mergeCells(bannerRow.number, 1, bannerRow.number, Math.max(numColumnas + 1, 2));
+  bannerRow.height = 22;
+  bannerRow.eachCell(c => {
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + (validado ? COLOR_OK_HEX : COLOR_BANNER_INCOMPLETO_HEX) } };
+    c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+    c.alignment = { vertical: 'middle', horizontal: 'left' };
+  });
+  ws.addRow([]);
+
+  const headerRow = ws.addRow(['Faja/Fila'].concat(Array.from({ length: numColumnas }, (_, i) => i + 1)));
+  headerRow.eachCell(c => {
+    c.font = { bold: true };
+    c.alignment = { horizontal: 'center', vertical: 'middle' };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDFE3E8' } };
+  });
+
+  filas.forEach(fila => {
+    const row = ws.addRow([fila.label].concat(fila.celdas.map(textoCeldaCampo)));
+    row.getCell(1).font = { bold: true };
+    row.getCell(1).alignment = { vertical: 'middle' };
+    row.height = 46;
+    fila.celdas.forEach((c, i) => {
+      const cell = row.getCell(i + 2);
+      cell.alignment = { wrapText: true, horizontal: 'center', vertical: 'middle' };
+      if (!c) return;
+      let color = COLOR_PEND_HEX;
+      if (c.estado === 'ok') color = COLOR_OK_HEX;
+      else if (c.estado && c.estado !== 'pendiente') color = COLOR_ALERTA_HEX;
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + color } };
+      if (c.estado === 'ok') cell.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+    });
+  });
+
+  ws.getColumn(1).width = 14;
+  for (let i = 2; i <= numColumnas + 1; i++) ws.getColumn(i).width = 14;
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'verificacion_campo_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.download = nombreArchivoCampo('xlsx');
   a.click();
+});
+
+// La fuente estándar del PDF (helvetica/WinAnsi) no tiene glyphs para
+// flechas Unicode (← →) ni el check ✔ -- si se le pasan tal cual, dibuja
+// basura en vez de esos caracteres. Se sustituyen por equivalentes ASCII
+// antes de mandarlos a jsPDF (el Excel no tiene este problema, es texto
+// plano y no depende de una fuente vectorial).
+function textoPdfSeguro(s) {
+  return String(s == null ? '' : s)
+    .replace(/\u2190/g, '<-')
+    .replace(/\u2192/g, '->')
+    .replace(/[\u2713\u2714]/g, 'OK');
+}
+
+// Encabezado (título + info + banner) repetido en cada hoja del PDF.
+function dibujarEncabezadoPdfCampo(doc, ok, total, pendientes, alertas, validado) {
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+  doc.text('Verificación Mapa Campo', 40, 34);
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.text(
+    'Estudio: ' + ($('infoEstudioCampo').textContent || '—') +
+    '   ·   Localidad: ' + ($('infoLocalidadCampo').textContent || '—') +
+    '   ·   Tipo: ' + ($('infoTipoCampo').textContent || '—') +
+    '   ·   ' + new Date().toLocaleString(),
+    40, 50
+  );
+  const bannerTexto = validado
+    ? 'MAPA VALIDADO -- ' + ok + '/' + total + ' plots verificados OK'
+    : 'Verificación en progreso -- OK: ' + ok + '   Pendientes: ' + pendientes + '   Alertas: ' + alertas + '   Total: ' + total;
+  const pageW = doc.internal.pageSize.getWidth();
+  if (validado) doc.setFillColor(31, 111, 67); else doc.setFillColor(154, 103, 0);
+  doc.rect(40, 60, pageW - 80, 22, 'F');
+  doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+  doc.text(bannerTexto, 48, 75);
+  doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal');
+}
+
+// Colorea cada celda de datos según su estado ('ok'/'alerta'/'pendiente').
+// colOffset es la columna real (dentro de "filas") de la primera columna
+// de datos de ESTA tabla -- 0 si la tabla trae todas las columnas, o el
+// punto donde empieza el grupo cuando se reparte en varias hojas.
+function colorearCeldaPdfCampo(filas, colOffset) {
+  return (data) => {
+    if (data.section !== 'body' || data.column.index === 0) return;
+    const c = filas[data.row.index] && filas[data.row.index].celdas[colOffset + data.column.index - 1];
+    if (!c) return;
+    if (c.estado === 'ok') {
+      data.cell.styles.fillColor = [31, 111, 67];
+      data.cell.styles.textColor = [255, 255, 255];
+      data.cell.styles.fontStyle = 'bold';
+    } else if (c.estado && c.estado !== 'pendiente') {
+      data.cell.styles.fillColor = [252, 232, 230];
+    } else {
+      data.cell.styles.fillColor = [238, 240, 242];
+    }
+  };
+}
+
+// Tamaños de letra a probar, de más a menos cómodo, buscando que TODO el
+// mapa entre en una sola hoja. Por debajo de 4.2pt la letra deja de ser
+// legible impresa, así que ahí se deja de intentar una sola hoja.
+const NIVELES_FUENTE_PDF_CAMPO = [
+  { fontSize: 6.5, cellPadding: 2 },
+  { fontSize: 5.5, cellPadding: 1.8 },
+  { fontSize: 4.8, cellPadding: 1.5 },
+  { fontSize: 4.2, cellPadding: 1.2 },
+];
+// Si ni el tamaño más chico entra en una sola hoja (mapas muy anchos, ej.
+// 40 Surcos), en vez de dejar que el salto de página automático corte
+// donde le alcance el ancho (grupos disparejos, ej. 28+12), se reparte el
+// mapa en grupos de columnas PAREJOS -- una hoja por grupo -- con una
+// letra más cómoda, ya que de todas formas se va a repartir en varias
+// hojas. Probado que a este tamaño entran ~20 columnas por hoja Carta
+// horizontal de forma legible.
+const COLUMNAS_POR_PAGINA_PDF_CAMPO_FALLBACK = 20;
+const FUENTE_PDF_CAMPO_FALLBACK = { fontSize: 6, cellPadding: 1.8 };
+const MARGEN_PDF_CAMPO = { left: 30, right: 30, top: 96, bottom: 20 };
+
+$('btnExportCampoPDF').addEventListener('click', () => {
+  if (!campoGridTds.length) { alert('Cargue un mapa primero.'); return; }
+  const filas = obtenerGridExportCampo();
+  const numColumnas = filas.length ? filas[0].celdas.length : 0;
+  const { ok, alertas, pendientes, total } = contarEstadosCampo();
+  const validado = total > 0 && ok === total;
+
+  const { jsPDF } = window.jspdf;
+  const head = [[''].concat(Array.from({ length: numColumnas }, (_, i) => String(i + 1)))];
+  const body = filas.map(fila => [textoPdfSeguro(fila.label)].concat(fila.celdas.map(c => textoPdfSeguro(textoCeldaCampo(c)))));
+
+  // 1) Intentar que todo el mapa entre en una sola hoja, de más a menos
+  //    cómodo. IMPORTANTE: con format como arreglo numérico [ancho, alto]
+  //    sin indicar "orientation", jsPDF lo interpreta como VERTICAL sin
+  //    importar el orden de los valores (se confirmó probándolo);
+  //    orientation:'landscape' + format:'letter' sí da horizontal siempre.
+  let doc = null;
+  for (const nivel of NIVELES_FUENTE_PDF_CAMPO) {
+    const intento = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+    dibujarEncabezadoPdfCampo(intento, ok, total, pendientes, alertas, validado);
+    intento.autoTable({
+      head, body, startY: 96, theme: 'grid', margin: MARGEN_PDF_CAMPO,
+      styles: Object.assign({ halign: 'center', valign: 'middle', overflow: 'linebreak' }, nivel),
+      headStyles: { fillColor: [31, 111, 67], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: { 0: { fontStyle: 'bold', halign: 'left' } },
+      horizontalPageBreak: true,
+      horizontalPageBreakRepeat: 0,
+      didParseCell: colorearCeldaPdfCampo(filas, 0)
+    });
+    if (intento.internal.getNumberOfPages() === 1) { doc = intento; break; }
+  }
+
+  // 2) Si no entró en una sola hoja con ningún tamaño legible, repartir en
+  //    grupos de columnas parejos, una hoja por grupo.
+  if (!doc) {
+    const numPaginas = Math.max(2, Math.ceil(numColumnas / COLUMNAS_POR_PAGINA_PDF_CAMPO_FALLBACK));
+    const colsPorGrupo = Math.ceil(numColumnas / numPaginas);
+    doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+    for (let g = 0; g < numPaginas; g++) {
+      const inicio = g * colsPorGrupo, fin = Math.min(numColumnas, inicio + colsPorGrupo);
+      if (inicio >= fin) break;
+      if (g > 0) doc.addPage();
+      dibujarEncabezadoPdfCampo(doc, ok, total, pendientes, alertas, validado);
+      const headG = [[''].concat(Array.from({ length: fin - inicio }, (_, i) => String(inicio + i + 1)))];
+      const bodyG = filas.map(fila => [textoPdfSeguro(fila.label)].concat(
+        fila.celdas.slice(inicio, fin).map(c => textoPdfSeguro(textoCeldaCampo(c)))
+      ));
+      doc.autoTable({
+        head: headG, body: bodyG, startY: 96, theme: 'grid', margin: MARGEN_PDF_CAMPO,
+        styles: Object.assign({ halign: 'center', valign: 'middle', overflow: 'linebreak' }, FUENTE_PDF_CAMPO_FALLBACK),
+        headStyles: { fillColor: [31, 111, 67], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: { 0: { fontStyle: 'bold', halign: 'left' } },
+        didParseCell: colorearCeldaPdfCampo(filas, inicio)
+      });
+    }
+  }
+
+  doc.save(nombreArchivoCampo('pdf'));
 });
 
 /* =========================================================================
@@ -3651,367 +3864,6 @@ async function detenerEscaneoLote(manual) {
   }
   $('btnIniciarCamaraLote').style.display = 'inline-block';
   $('btnDetenerCamaraLote').style.display = 'none';
-}
-
-/* =========================================================================
-   VERIFICACIÓN BULK (pre-generación de GID de bulk)
-   Reutiliza el mismo lotIndex (LOT_UID -> GID) que ya carga
-   "Cargar lotes desde BMS" -- no hace llamadas nuevas a BMS. Un mismo GID
-   puede repetirse en varias filas del mismo bulk (varios sobres/lotes
-   aportando al mismo bulk con pesos distintos) -- por eso bulkGidIndex
-   guarda un ARRAY de filas por GID; si hay más de una fila pendiente para
-   ese GID se pide elegir cuál corresponde (igual que el selector de
-   "varios lotes" de Almacenamiento LOT_UID x GID).
-   ========================================================================= */
-
-let bulkRows = [];
-let bulkGidIndex = new Map();
-let bulkHistorial = [];
-let pendienteMultiBulk = null;
-let html5QrCodeBulk = null;
-
-$('fileInputBulk').addEventListener('change', (ev) => {
-  const file = ev.target.files[0];
-  if (!file) return;
-  $('fileStatusBulk').innerHTML = 'Leyendo archivo&hellip;';
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const wb = XLSX.read(e.target.result, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
-      procesarBulkExcel(rows);
-    } catch (err) {
-      $('fileStatusBulk').innerHTML = '<span class="hl-bad">Error leyendo el archivo: ' + esc(err.message || err) + '</span>';
-    }
-  };
-  reader.onerror = () => { $('fileStatusBulk').innerHTML = '<span class="hl-bad">No se pudo leer el archivo.</span>'; };
-  reader.readAsArrayBuffer(file);
-});
-
-function procesarBulkExcel(rows) {
-  let headerIdx = -1, colNombre = -1, colGid = -1, colPeso = -1, colSemillas = -1;
-  const maxScan = Math.min(rows.length, 30);
-  for (let r = 0; r < maxScan; r++) {
-    const row = rows[r] || [];
-    let tieneNombre = false, tieneGid = false;
-    let cn = -1, cg = -1, cp = -1, cs = -1;
-    row.forEach((c, i) => {
-      const k = key(c);
-      if (!k) return;
-      if (k.indexOf('NOMBRE') !== -1 && k.indexOf('BULK') !== -1) { cn = i; tieneNombre = true; }
-      else if (k === 'GID') { cg = i; tieneGid = true; }
-      else if (k.indexOf('PESO') !== -1) { cp = i; }
-      else if (k.indexOf('SEMIL') !== -1) { cs = i; }
-    });
-    if (tieneNombre && tieneGid) { headerIdx = r; colNombre = cn; colGid = cg; colPeso = cp; colSemillas = cs; break; }
-  }
-  if (headerIdx === -1) {
-    $('fileStatusBulk').innerHTML = '<span class="hl-bad">No se encontraron las columnas "NOMBRE BULK" y "GID" en este archivo.</span>';
-    return;
-  }
-
-  bulkRows = [];
-  bulkGidIndex = new Map();
-  let id = 0;
-  for (let r = headerIdx + 1; r < rows.length; r++) {
-    const row = rows[r] || [];
-    const nombreBulk = norm(row[colNombre]);
-    const gid = norm(row[colGid]).replace(/\.0$/, '');
-    if (!nombreBulk && !gid) break;
-    if (!gid) continue;
-    const item = {
-      id: id++, nombreBulk, gid,
-      pesoEsperado: colPeso >= 0 ? norm(row[colPeso]) : '',
-      semillasEsperado: colSemillas >= 0 ? norm(row[colSemillas]) : '',
-      estado: 'pendiente', lotUid: '', hora: '', tr: null
-    };
-    bulkRows.push(item);
-    if (!bulkGidIndex.has(gid)) bulkGidIndex.set(gid, []);
-    bulkGidIndex.get(gid).push(item);
-  }
-
-  if (!bulkRows.length) {
-    $('fileStatusBulk').innerHTML = '<span class="hl-bad">Se encontró el encabezado pero no hay filas de datos debajo.</span>';
-    return;
-  }
-
-  bulkHistorial = [];
-  document.querySelector('#histBulkTable tbody').innerHTML = '';
-  const nBulks = new Set(bulkRows.map(r => r.nombreBulk)).size;
-  $('fileStatusBulk').innerHTML = '<span class="hl-ok">Cargado:</span> ' + bulkRows.length + ' fila(s) &middot; ' + nBulks + ' bulk(s) distinto(s).';
-
-  $('scanBulk').disabled = !lotIndex.size;
-  $('scanBulk').placeholder = lotIndex.size ? 'Escanee el LOT_UID del sobre' : 'Carga el catálogo de lotes (arriba) primero';
-  $('summaryBulk').style.display = 'flex';
-  renderTablaBulk();
-  renderHistorialBulk();
-  actualizarContadoresBulk();
-  $('verdictBulk').className = 'verdict';
-  $('verdictBulk').textContent = 'Listo. Escanee el primer sobre.';
-  if (lotIndex.size) $('scanBulk').focus();
-}
-
-function badgeBulk(row) {
-  return row.estado === 'ok' ? '<span class="badge-true">Confirmado</span>' : '<span class="badge-false">Pendiente</span>';
-}
-
-function renderTablaBulk() {
-  const tbody = document.querySelector('#tablaBulkTable tbody');
-  tbody.innerHTML = '';
-  const frag = document.createDocumentFragment();
-  bulkRows.forEach(row => {
-    const tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td>' + esc(row.nombreBulk) + '</td>' +
-      '<td class="mono">' + esc(row.gid) + '</td>' +
-      '<td>' + esc(row.pesoEsperado || '-') + '</td>' +
-      '<td>' + esc(row.semillasEsperado || '-') + '</td>' +
-      '<td class="estadoCell">' + badgeBulk(row) + '</td>' +
-      '<td class="lotCell mono">' + esc(row.lotUid || '') + '</td>' +
-      '<td class="horaCell">' + esc(row.hora || '') + '</td>';
-    row.tr = tr;
-    frag.appendChild(tr);
-  });
-  tbody.appendChild(frag);
-}
-
-function pintarFilaBulk(row) {
-  if (!row.tr) return;
-  row.tr.querySelector('.estadoCell').innerHTML = badgeBulk(row);
-  row.tr.querySelector('.lotCell').textContent = row.lotUid || '';
-  row.tr.querySelector('.horaCell').textContent = row.hora || '';
-}
-
-function pintarVerdictoBulk(clase, titulo, detalle) {
-  $('verdictBulk').className = 'verdict' + (clase ? ' ' + clase : '');
-  $('verdictBulk').innerHTML = titulo + (detalle ? ' <small>' + detalle + '</small>' : '');
-}
-
-let bulkAutoTimer = null;
-
-function dispararEscaneoBulkDesdeInput() {
-  if (bulkAutoTimer) { clearTimeout(bulkAutoTimer); bulkAutoTimer = null; }
-  const code = norm($('scanBulk').value);
-  if (!code) return;
-  procesarEscaneoBulk(code);
-  $('scanBulk').value = '';
-  $('scanBulk').focus();
-}
-
-// Disparo inmediato si el lector SÍ manda Enter/Tab al final.
-$('scanBulk').addEventListener('keydown', e => {
-  if (e.key !== 'Enter' && e.key !== 'Tab') return;
-  e.preventDefault();
-  dispararEscaneoBulkDesdeInput();
-});
-
-// Disparo automático por velocidad de escritura: un lector de código de
-// barras escribe todos los caracteres casi de golpe (mucho más rápido que
-// una persona), así que si dejan de llegar caracteres nuevos por ~200ms
-// asumimos que el escaneo terminó y procesamos solo, sin esperar Enter/Tab
-// ni que el usuario haga clic en otro lado.
-$('scanBulk').addEventListener('input', () => {
-  if (bulkAutoTimer) clearTimeout(bulkAutoTimer);
-  bulkAutoTimer = setTimeout(() => {
-    if (norm($('scanBulk').value)) dispararEscaneoBulkDesdeInput();
-  }, 200);
-});
-
-// Respaldo: si de todos modos pierde el foco con contenido pendiente.
-$('scanBulk').addEventListener('blur', () => {
-  if (norm($('scanBulk').value)) dispararEscaneoBulkDesdeInput();
-});
-
-function procesarEscaneoBulk(codigoRaw) {
-  const code = norm(codigoRaw);
-  if (!code) return;
-  if (!bulkRows.length) { $('subBulk').innerHTML = '<span class="hl-bad">Cargue primero el archivo de bulk.</span>'; return; }
-  if (!lotIndex.size) { $('subBulk').innerHTML = '<span class="hl-bad">Carga primero el catálogo de lotes desde BMS (arriba).</span>'; return; }
-  ocultarMultiBulk();
-  $('subBulk').innerHTML = '';
-  const hora = new Date().toLocaleTimeString();
-
-  const hit = lotIndex.get(code.toUpperCase());
-  if (!hit) {
-    pintarVerdictoBulk('false', 'NO ENCONTRADO EN INVENTARIO', 'El LOT_UID "' + esc(code) + '" no está en el catálogo de lotes de BMS');
-    agregarHistorialBulk({ hora, lotUid: code, gid: '', nombreBulk: '', pesoEsperado: '', resultado: 'LOT_UID NO ENCONTRADO' });
-    return;
-  }
-
-  const gid = hit.gid;
-  const candidatos = (bulkGidIndex.get(gid) || []).filter(r => r.estado === 'pendiente');
-
-  if (!candidatos.length) {
-    if (bulkGidIndex.has(gid)) {
-      pintarVerdictoBulk('false', 'YA CONFIRMADO', 'Todas las filas del GID ' + esc(gid) + ' en este bulk ya fueron escaneadas');
-      agregarHistorialBulk({ hora, lotUid: code, gid, nombreBulk: '', pesoEsperado: '', resultado: 'DUPLICADO' });
-    } else {
-      pintarVerdictoBulk('false', 'GID NO PERTENECE A ESTE BULK', 'LOT_UID ' + esc(code) + ' &rarr; GID ' + esc(gid) + (hit.desig ? ' (' + esc(hit.desig) + ')' : '') + ' no está en la lista cargada');
-      agregarHistorialBulk({ hora, lotUid: code, gid, nombreBulk: '', pesoEsperado: '', resultado: 'NO PERTENECE' });
-    }
-    return;
-  }
-
-  if (candidatos.length === 1) {
-    confirmarFilaBulk(candidatos[0], code, hit, hora);
-    return;
-  }
-  mostrarMultiBulk(gid, candidatos, code, hit, hora);
-}
-
-function confirmarFilaBulk(row, lotUid, hit, hora) {
-  row.estado = 'ok';
-  row.lotUid = lotUid;
-  row.hora = hora;
-  pintarFilaBulk(row);
-  pintarVerdictoBulk('true', 'OK &middot; ' + esc(row.nombreBulk),
-    'GID ' + esc(row.gid) + (hit.desig ? ' (' + esc(hit.desig) + ')' : '') +
-    ' &middot; Peso esperado: ' + esc(row.pesoEsperado || '-') +
-    (row.semillasEsperado ? ' &middot; #Semillas: ' + esc(row.semillasEsperado) : ''));
-  agregarHistorialBulk({ hora, lotUid, gid: row.gid, nombreBulk: row.nombreBulk, pesoEsperado: row.pesoEsperado, resultado: 'OK' });
-  actualizarContadoresBulk();
-}
-
-function mostrarMultiBulk(gid, candidatos, lotUid, hit, hora) {
-  pintarVerdictoBulk('', 'GID ' + esc(gid) + ' tiene ' + candidatos.length + ' filas pendientes', 'elige a cuál corresponde este sobre');
-  const html = candidatos.map(r =>
-    '<div class="kv" style="padding:8px 0;border-bottom:1px solid var(--line)">' +
-    '<b>Bulk</b><span>' + esc(r.nombreBulk) + '</span>' +
-    '<b>Peso esperado</b><span>' + esc(r.pesoEsperado || '&mdash;') + '</span>' +
-    '<b>#Semillas</b><span>' + esc(r.semillasEsperado || '&mdash;') + '</span>' +
-    '<b></b><span><button class="act" onclick="elegirFilaBulk(' + r.id + ')">Usar esta fila</button></span>' +
-    '</div>'
-  ).join('');
-  $('multiBulkLista').innerHTML = html;
-  $('multiBulkWrap').style.display = '';
-  pendienteMultiBulk = { gid, lotUid, hit, hora };
-}
-
-function elegirFilaBulk(rowId) {
-  if (!pendienteMultiBulk) return;
-  const row = bulkRows.find(r => r.id === rowId && r.estado === 'pendiente');
-  const { lotUid, hit, hora } = pendienteMultiBulk;
-  ocultarMultiBulk();
-  if (!row) return;
-  confirmarFilaBulk(row, lotUid, hit, hora);
-}
-
-function ocultarMultiBulk() {
-  $('multiBulkWrap').style.display = 'none';
-  $('multiBulkLista').innerHTML = '';
-  pendienteMultiBulk = null;
-}
-
-function agregarHistorialBulk(reg) {
-  bulkHistorial.unshift(reg);
-  renderHistorialBulk();
-  actualizarContadoresBulk();
-}
-
-function renderHistorialBulk() {
-  const tbody = document.querySelector('#histBulkTable tbody');
-  tbody.innerHTML = '';
-  const frag = document.createDocumentFragment();
-  bulkHistorial.slice(0, 300).forEach(h => {
-    const tr = document.createElement('tr');
-    const cls = h.resultado === 'OK' ? 'badge-true' : 'badge-false';
-    tr.innerHTML =
-      '<td>' + esc(h.hora) + '</td>' +
-      '<td class="mono">' + esc(h.lotUid) + '</td>' +
-      '<td class="mono">' + esc(h.gid || '-') + '</td>' +
-      '<td>' + esc(h.nombreBulk || '-') + '</td>' +
-      '<td>' + esc(h.pesoEsperado || '-') + '</td>' +
-      '<td><span class="' + cls + '">' + esc(h.resultado) + '</span></td>';
-    frag.appendChild(tr);
-  });
-  tbody.appendChild(frag);
-}
-
-function actualizarContadoresBulk() {
-  const total = bulkRows.length;
-  const ok = bulkRows.filter(r => r.estado === 'ok').length;
-  const pend = total - ok;
-  const alertas = bulkHistorial.filter(h => h.resultado === 'NO PERTENECE' || h.resultado === 'DUPLICADO' || h.resultado === 'LOT_UID NO ENCONTRADO').length;
-  $('sTotalBulk').textContent = total;
-  $('sOkBulk').textContent = ok;
-  $('sPendBulk').textContent = pend;
-  $('sAlertBulk').textContent = alertas;
-}
-
-function reiniciarBulk() {
-  if (!bulkRows.length) return;
-  if (!confirm('¿Reiniciar todas las filas a Pendiente y borrar el historial de esta sesión?')) return;
-  bulkRows.forEach(r => { r.estado = 'pendiente'; r.lotUid = ''; r.hora = ''; });
-  bulkHistorial = [];
-  ocultarMultiBulk();
-  renderTablaBulk();
-  renderHistorialBulk();
-  actualizarContadoresBulk();
-  $('verdictBulk').className = 'verdict';
-  $('verdictBulk').textContent = 'Reiniciado. Escanee los sobres.';
-  $('subBulk').innerHTML = '';
-}
-
-function exportarBulk() {
-  if (!bulkRows.length) { alert('Cargue el archivo de bulk primero.'); return; }
-  const headers = ['NOMBRE BULK', 'GID', 'Peso esperado', '#Semillas esperado', 'Estado', 'LOT_UID escaneado', 'Hora'];
-  const rows = [headers.join(',')];
-  bulkRows.forEach(r => {
-    const vals = [r.nombreBulk, r.gid, r.pesoEsperado, r.semillasEsperado, r.estado === 'ok' ? 'CONFIRMADO' : 'PENDIENTE', r.lotUid, r.hora];
-    rows.push(vals.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(','));
-  });
-  const alertas = bulkHistorial.filter(h => h.resultado !== 'OK');
-  if (alertas.length) {
-    rows.push('');
-    rows.push('"ALERTAS DURANTE EL ESCANEO"');
-    rows.push(['Hora', 'LOT_UID', 'GID', 'Resultado'].join(','));
-    alertas.forEach(h => rows.push(['"' + h.hora + '"', '"' + String(h.lotUid).replace(/"/g, '""') + '"', '"' + String(h.gid || '').replace(/"/g, '""') + '"', '"' + h.resultado + '"'].join(',')));
-  }
-  const csv = '\uFEFF' + rows.join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'verificacion_bulk_' + new Date().toISOString().slice(0, 10) + '.csv';
-  a.click();
-}
-
-async function iniciarEscaneoBulk() {
-  if (!bulkRows.length) { $('subBulk').innerHTML = '<span class="hl-bad">Cargue primero el archivo de bulk.</span>'; return; }
-  if (!lotIndex.size) { $('subBulk').innerHTML = '<span class="hl-bad">Carga primero el catálogo de lotes.</span>'; return; }
-  $('btnIniciarCamaraBulk').style.display = 'none';
-  $('btnDetenerCamaraBulk').style.display = 'inline-block';
-  $('subBulk').innerHTML = 'Apunta la cámara al código del sobre...';
-  html5QrCodeBulk = new Html5Qrcode('readerBulk');
-  try {
-    await html5QrCodeBulk.start(
-      { facingMode: 'environment' },
-      {
-        fps: 10, qrbox: 250,
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.CODE_93, Html5QrcodeSupportedFormats.QR_CODE
-        ]
-      },
-      (decodedText) => {
-        procesarEscaneoBulk(String(decodedText).trim());
-        detenerEscaneoBulk(false);
-      }
-    );
-  } catch (e) {
-    $('subBulk').innerHTML = '<span class="hl-bad">No se pudo iniciar la cámara: ' + esc((e && (e.message || e.name)) || 'error desconocido') + '</span>';
-    $('btnIniciarCamaraBulk').style.display = 'inline-block';
-    $('btnDetenerCamaraBulk').style.display = 'none';
-  }
-}
-
-async function detenerEscaneoBulk(manual) {
-  if (html5QrCodeBulk) {
-    try { await html5QrCodeBulk.stop(); html5QrCodeBulk.clear(); } catch (e) {}
-    html5QrCodeBulk = null;
-  }
-  $('btnIniciarCamaraBulk').style.display = 'inline-block';
-  $('btnDetenerCamaraBulk').style.display = 'none';
 }
 
 </script>
