@@ -1055,6 +1055,7 @@ function descargarInventarioBMS(){
   const filas = [];
   lotIndex.forEach(lot => {
     filas.push({
+      LOT_UID: lot.lotUID,
       GID: lot.gid,
       LNAME: lot.desig,
       'Peso Actual': lot.peso,
