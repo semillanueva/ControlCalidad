@@ -451,7 +451,7 @@
 
   <div class="scan-row">
     <div class="scan-box" style="max-width:420px">
-      <label>Escanear etiqueta del sobre (OBS_UNIT_ID)</label>
+      <label>Escanear etiqueta del sobre (OBS_UNIT_ID o GID)</label>
       <input type="text" id="scanPaquete" placeholder="Cargue el Packing List primero" autocomplete="off" disabled>
       <div class="sub" id="subPaquete"></div>
     </div>
@@ -3208,6 +3208,8 @@ let paqueteMeta = { experimento:'', fecha:'', totalDeclarado:null };
 let paqueteLista = [];          // [{no,obsUnitId,planta,tipo,sampleUuid,sampleCode,maz,gid,guid,estado,horaRecibido,veces,tr}]
 let paqueteIndex = new Map();   // OBS_UNIT_ID exacto -> item
 let paqueteIndexUpper = new Map(); // fallback may/min (solo si es único) -> item
+let paqueteIndexGid = new Map();   // GID normalizado -> [items] (fallback para etiquetas que solo traen GID)
+const normGidPaquete = v => norm(v).replace(/\.0+$/, '').replace(/^0+(?=\d)/, '');
 let paqueteHistorial = [];
 let html5QrCodePaquete = null;
 
@@ -3317,6 +3319,13 @@ function procesarPackingList(rows) {
     const u = item.obsUnitId.toUpperCase();
     if (upperCount.get(u) === 1) paqueteIndexUpper.set(u, item); // solo si es único, para evitar falsos positivos
   });
+  paqueteIndexGid = new Map();
+  lista.forEach(item => {
+    const g = normGidPaquete(item.gid);
+    if (!g) return;
+    if (!paqueteIndexGid.has(g)) paqueteIndexGid.set(g, []);
+    paqueteIndexGid.get(g).push(item);
+  });
 
   paqueteMeta = { experimento, fecha, totalDeclarado };
   paqueteHistorial = [];
@@ -3328,7 +3337,7 @@ function procesarPackingList(rows) {
   $('infoTotalPaquete').textContent = (totalDeclarado !== null ? totalDeclarado + ' declaradas · ' : '') + lista.length + ' filas leídas';
 
   $('scanPaquete').disabled = false;
-  $('scanPaquete').placeholder = 'Escanee o escriba el OBS_UNIT_ID del sobre';
+  $('scanPaquete').placeholder = 'Escanee el OBS_UNIT_ID o GID del sobre';
   $('btnIniciarCamaraPaquete').disabled = false;
   $('summaryPaquete').style.display = '';
 
@@ -3366,10 +3375,25 @@ function procesarEscaneoPaquete(codigoRaw) {
     if (item) aprox = true;
   }
 
+  // Fallback: etiquetas que solo traen el GID (solo si no coincidió como OBS_UNIT_ID)
+  let porGid = false, gidInfo = '';
+  if (!item) {
+    const grupo = paqueteIndexGid.get(normGidPaquete(codigo));
+    if (grupo && grupo.length) {
+      porGid = true;
+      const pend = grupo.filter(i => i.estado !== 'recibido');
+      item = pend.length ? pend[0] : grupo[0]; // marca la siguiente fila pendiente de ese GID
+      if (grupo.length > 1) {
+        const quedan = Math.max(pend.length - 1, 0);
+        gidInfo = ' &middot; GID repetido ' + grupo.length + ' veces en el archivo (quedan ' + quedan + ' pendiente(s))';
+      }
+    }
+  }
+
   if (!item) {
     $('verdictPaquete').className = 'verdict false';
     $('verdictPaquete').innerHTML = 'NO ENCONTRADO <small>' + esc(codigo) + ' no está en este Packing List</small>';
-    $('subPaquete').innerHTML = '<span class="hl-bad">No coincide con ningún OBS_UNIT_ID del archivo.</span>';
+    $('subPaquete').innerHTML = '<span class="hl-bad">No coincide con ningún OBS_UNIT_ID ni GID del archivo.</span>';
     paqueteHistorial.unshift({ hora, codigo, planta: '', gid: '', resultado: 'NO ENCONTRADO' });
     renderHistorialPaquete();
     actualizarContadoresPaquete();
@@ -3379,9 +3403,9 @@ function procesarEscaneoPaquete(codigoRaw) {
   if (item.estado === 'recibido') {
     item.veces++;
     $('verdictPaquete').className = 'verdict false';
-    $('verdictPaquete').innerHTML = 'YA REGISTRADO <small>' + esc(item.obsUnitId) + ' recibido a las ' + esc(item.horaRecibido) + ' &middot; escaneado ' + item.veces + ' veces</small>';
-    $('subPaquete').innerHTML = '<span class="hl-bad">Duplicado &mdash; este sobre ya se había escaneado.</span>';
-    paqueteHistorial.unshift({ hora, codigo, planta: item.planta, gid: item.gid, resultado: 'DUPLICADO' });
+    $('verdictPaquete').innerHTML = 'YA REGISTRADO <small>' + esc(item.obsUnitId) + ' recibido a las ' + esc(item.horaRecibido) + ' &middot; escaneado ' + item.veces + ' veces' + (porGid ? ' &middot; (por GID ' + esc(item.gid) + ')' : '') + '</small>';
+    $('subPaquete').innerHTML = '<span class="hl-bad">Duplicado &mdash; ' + (porGid ? 'todas las filas de este GID ya fueron recibidas.' : 'este sobre ya se había escaneado.') + '</span>';
+    paqueteHistorial.unshift({ hora, codigo, planta: item.planta, gid: item.gid, resultado: porGid ? 'DUPLICADO (GID)' : 'DUPLICADO' });
     renderHistorialPaquete();
     actualizarContadoresPaquete();
     return;
@@ -3394,9 +3418,10 @@ function procesarEscaneoPaquete(codigoRaw) {
   $('verdictPaquete').innerHTML = 'OK <small>' + esc(item.obsUnitId) +
     (item.planta ? ' &middot; Planta ' + esc(item.planta) : '') +
     (item.gid ? ' &middot; GID ' + esc(item.gid) : '') +
-    (aprox ? ' &middot; (coincide ignorando mayúsc/minúsc.)' : '') + '</small>';
-  $('subPaquete').innerHTML = '<span class="hl-ok">Recibido y verificado contra el Packing List.</span>';
-  paqueteHistorial.unshift({ hora, codigo, planta: item.planta, gid: item.gid, resultado: aprox ? 'OK (may/min)' : 'OK' });
+    (aprox ? ' &middot; (coincide ignorando mayúsc/minúsc.)' : '') +
+    (porGid ? ' &middot; (identificado por GID)' + gidInfo : '') + '</small>';
+  $('subPaquete').innerHTML = '<span class="hl-ok">Recibido y verificado contra el Packing List' + (porGid ? ' (por GID)' : '') + '.</span>';
+  paqueteHistorial.unshift({ hora, codigo, planta: item.planta, gid: item.gid, resultado: porGid ? 'OK (GID)' : (aprox ? 'OK (may/min)' : 'OK') });
   pintarFilaPaquete(item);
   renderHistorialPaquete();
   actualizarContadoresPaquete();
