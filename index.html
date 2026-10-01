@@ -3587,7 +3587,8 @@ $('scanLote').addEventListener('keydown', e => {
   if (!code) return;
   procesarEscaneoLote(code);
   $('scanLote').value = '';
-  $('scanLote').focus();
+  if($('scanEtiqueta2').disabled) $('scanLote').focus;
+  else $('scanEtiqueta2').focus(); 
 });
 
 function procesarEscaneoLote(codigoRaw) {
