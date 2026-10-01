@@ -506,9 +506,8 @@
     por separado de un GID que de plano no existe en BMS.
   </p>
   <p style="font-size:.85rem;color:#666;margin:0 0 10px">
-    Segunda etiqueta (opcional): trae el OBS_UNIT_ID del padre/origen. La app ya saca el origen registrado del GID de la
-    Etiqueta 1 directamente desde BMS (sin necesidad de cargar ningún vivero), y compara ese OBS_UNIT_ID contra lo que
-    escanees en la Etiqueta 2.
+    Segunda etiqueta (opcional): trae el LOT_UID. La app busca en el catálogo de lotes a qué GID pertenece ese LOT_UID y
+    verifica que sea el mismo GID escaneado en la Etiqueta 1.
   </p>
 
   <div class="scan-row">
@@ -518,7 +517,7 @@
       <div class="sub" id="subLote"></div>
     </div>
     <div class="scan-box" style="max-width:420px">
-      <label>Etiqueta 2 &mdash; OBS_UNIT_ID del padre</label>
+      <label>Etiqueta 2 &mdash; LOT_UID</label>
       <input type="text" id="scanEtiqueta2" placeholder="Primero escanee la Etiqueta 1 (GID)" autocomplete="off" disabled>
       <div class="sub" id="subEtiqueta2"></div>
     </div>
@@ -557,7 +556,7 @@
   </div>
   <div class="table-wrap">
     <table id="histLoteTable">
-      <thead><tr><th>Hora</th><th>GID escaneado</th><th>LOT_UID</th><th>Ubicación</th><th>Disponible</th><th>OBS Etiqueta 2</th><th>Resultado</th></tr></thead>
+      <thead><tr><th>Hora</th><th>GID escaneado</th><th>LOT_UID</th><th>Ubicación</th><th>Disponible</th><th>LOT_UID Etiqueta 2</th><th>Resultado</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -1881,7 +1880,7 @@ async function obtenerNombresGermplasma(gid) {
 //      (normal para GID de cosecha recién generados) y "el GID de plano no
 //      existe en BMS" (posible error de escaneo/etiqueta); y
 //  (b) sacar el origen del germoplasma (germplasmOrigins / gpid1 / gpid2)
-//      para la verificación de la Etiqueta 2 (OBS_UNIT_ID del padre), sin
+//      para mostrar el origen del germoplasma (informativo), sin
 //      tener que cargar ningún vivero: BMS ya trae directo, por cada
 //      progenitor inmediato, su observationUnitId, studyName y studyId.
 // Se cachea el detalle crudo para no repetir la consulta si se escanea el
@@ -3611,7 +3610,7 @@ function procesarEscaneoLote(codigoRaw) {
         pintarVerdictoLote('false', 'SIN LOTE TODAVÍA', 'GID ' + esc(gid) + ' existe en BMS pero aún no tiene lote creado');
         $('subLote').innerHTML = '<span class="hl-bad">Esto es normal si acaban de generar el GID: el lote lo crea otra persona más adelante. Vuelve a intentar cuando ya te confirmen que lo crearon (y recarga el catálogo de lotes arriba).</span>';
         agregarHistorialLote({ hora, gid, lotUID: '', ubicacion: '', disponible: '', obsEtq2: '', resultado: 'SIN LOTE (GID existe)' });
-        activarEtiqueta2(gid, detalle);
+        activarEtiqueta2(gid);
       } else {
         pintarVerdictoLote('false', 'GID NO ENCONTRADO', esc(gid) + ' no existe en BMS');
         $('subLote').innerHTML = '<span class="hl-bad">Revisa la etiqueta / el código escaneado &mdash; este GID no está registrado en BMS.</span>';
@@ -3629,7 +3628,7 @@ function procesarEscaneoLote(codigoRaw) {
     const reg = { hora, gid, lotUID: '', ubicacion: '', disponible: '', obsEtq2: '', resultado: '' };
     resolverLote(gid, lotes[0], reg, false);
     agregarHistorialLote(reg);
-    obtenerGermplasmaDetalle(gid).then(detalle => activarEtiqueta2(gid, detalle));
+    activarEtiqueta2(gid);
     return;
   }
 
@@ -3686,7 +3685,7 @@ function elegirLote(gid, lotUID) {
   resolverLote(gid, lote, reg, true);
   renderHistorialLote();
   actualizarContadoresLote();
-  obtenerGermplasmaDetalle(gid).then(detalle => activarEtiqueta2(gid, detalle));
+  activarEtiqueta2(gid);
 }
 
 function ocultarMultiLote() {
@@ -3702,7 +3701,7 @@ function copiarLoteUID(uid) {
 }
 
 function spanResultadoLote(resultado) {
-  if (resultado.indexOf('RESUELTO') === 0 || resultado === 'COINCIDE ORIGEN') return '<span class="badge-true">' + esc(resultado) + '</span>';
+  if (resultado.indexOf('RESUELTO') === 0 || resultado === 'COINCIDE GID') return '<span class="badge-true">' + esc(resultado) + '</span>';
   if (resultado.indexOf('VARIOS') === 0 || resultado.indexOf('SIN LOTE') === 0) return '<span style="background:var(--amberbg);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:700;">' + esc(resultado) + '</span>';
   return '<span class="badge-false">' + esc(resultado) + '</span>';
 }
@@ -3742,8 +3741,8 @@ function actualizarContadoresLote() {
   $('summaryLote').style.display = total ? '' : 'none';
 }
 
-/* ---- Etiqueta 2: OBS_UNIT_ID del padre, verificado contra el origen del
-   GID de la Etiqueta 1 (germplasmOrigins), sin necesidad de cargar vivero ---- */
+/* ---- Etiqueta 2: LOT_UID. Se busca el LOT_UID en lotIndex y se verifica
+   que su GID sea el mismo GID escaneado en la Etiqueta 1 ---- */
 
 let etiqueta2Estado = null; // { gid, origen } mientras hay una Etiqueta 1 activa con origen conocido
 
@@ -3760,26 +3759,17 @@ function resetearEtiqueta2() {
   $('verdictEtiqueta2').innerHTML = '';
 }
 
-function activarEtiqueta2(gid, detalle) {
-  const origen = extraerOrigenGermplasma(detalle);
-  if (!origen || !origen.origins.length) {
-    $('origenEsperado').style.display = '';
-    $('origenEsperado').innerHTML = '<span class="hl-bad">Este GID no tiene "Origen del Germoplasma" registrado en BMS &mdash; no se puede verificar la Etiqueta 2 para este GID.</span>';
-    $('scanEtiqueta2').disabled = true;
-    $('scanEtiqueta2').placeholder = 'Este GID no tiene origen registrado';
-    return;
-  }
-  const padreGid = (origen.gpid1 && origen.gpid1 === origen.gpid2) ? origen.gpid1 : [origen.gpid1, origen.gpid2].filter(Boolean).join(' / ');
-  const listaObs = origen.origins.map(o => esc(o.observationUnitId) + (o.progenitorType ? ' (' + esc(o.progenitorType) + ')' : '')).join(', ');
+function activarEtiqueta2(gid) {
+  const lotes = lotesPorGid.get(gid) || [];
   $('origenEsperado').style.display = '';
   $('origenEsperado').innerHTML = '<div class="kv" style="padding:8px 0;border-top:1px solid var(--line)">' +
-    '<b>GID de origen (padre)</b><span class="mono">' + esc(padreGid || '—') + '</span>' +
-    '<b>Estudio</b><span>' + esc(origen.origins[0].studyName || '—') + '</span>' +
-    '<b>OBS_UNIT_ID esperado</b><span class="mono">' + listaObs + '</span>' +
-    '</div>';
-  etiqueta2Estado = { gid, origen };
+    '<b>GID Etiqueta 1</b><span class="mono">' + esc(gid) + '</span>' +
+    '<b>LOT_UID esperado</b><span class="mono">' +
+    (lotes.length ? lotes.map(l => esc(l.lotUID)).join(', ') : '<span class="hl-bad">Este GID aún no tiene lote en el catálogo</span>') +
+    '</span></div>';
+  etiqueta2Estado = { gid };
   $('scanEtiqueta2').disabled = false;
-  $('scanEtiqueta2').placeholder = 'Escanee la Etiqueta 2 (OBS_UNIT_ID del padre)';
+  $('scanEtiqueta2').placeholder = 'Escanee la Etiqueta 2 (LOT_UID)';
   $('scanEtiqueta2').focus();
 }
 
@@ -3800,29 +3790,31 @@ function procesarEscaneoEtiqueta2(codigoRaw) {
     $('subEtiqueta2').innerHTML = '<span class="hl-bad">Primero escanee la Etiqueta 1 (GID).</span>';
     return;
   }
-  const { gid, origen } = etiqueta2Estado;
+  const { gid } = etiqueta2Estado;
   const hora = new Date().toLocaleTimeString();
-  let match = origen.origins.find(o => o.observationUnitId === codigo);
-  let aprox = false;
-  if (!match) {
-    match = origen.origins.find(o => o.observationUnitId.toUpperCase() === codigo.toUpperCase());
-    aprox = !!match;
-  }
+  const lote = lotIndex.get(codigo.toUpperCase());
+  const gidLote = lote ? String(lote.gid || '').trim().replace(/\.0$/, '') : '';
+  const reg = { hora, gid, lotUID: lote ? lote.lotUID : '', ubicacion: lote ? (lote.ubicacion || '') : '', disponible: '', obsEtq2: codigo, resultado: '' };
 
   $('verdictEtiqueta2').style.display = '';
-  if (match) {
+  if (!lote) {
+    $('verdictEtiqueta2').className = 'verdict false';
+    $('verdictEtiqueta2').innerHTML = 'LOT_UID NO ENCONTRADO <small>' + esc(codigo) + ' no está en el catálogo de lotes cargado</small>';
+    $('subEtiqueta2').innerHTML = '<span class="hl-bad">Revisa la etiqueta, o recarga el catálogo de lotes si el lote es nuevo.</span>';
+    reg.resultado = 'LOT_UID NO ENCONTRADO';
+  } else if (gidLote === gid) {
     $('verdictEtiqueta2').className = 'verdict true';
-    $('verdictEtiqueta2').innerHTML = 'COINCIDE <small>La Etiqueta 2 corresponde al origen de GID ' + esc(gid) +
-      (match.progenitorType ? ' &middot; ' + esc(match.progenitorType) : '') +
-      (aprox ? ' &middot; (coincide ignorando mayúsc/minúsc.)' : '') + '</small>';
-    $('subEtiqueta2').innerHTML = '<span class="hl-ok">GID padre: ' + esc(origen.gpid1 || '—') + '</span>';
-    agregarHistorialLote({ hora, gid, lotUID: '', ubicacion: '', disponible: '', obsEtq2: codigo, resultado: 'COINCIDE ORIGEN' });
+    $('verdictEtiqueta2').innerHTML = 'COINCIDE <small>LOT_UID ' + esc(lote.lotUID) + ' pertenece al GID ' + esc(gid) + '</small>';
+    $('subEtiqueta2').innerHTML = '<span class="hl-ok">GID y LOT_UID corresponden.</span>';
+    reg.resultado = 'COINCIDE GID';
   } else {
     $('verdictEtiqueta2').className = 'verdict false';
-    $('verdictEtiqueta2').innerHTML = 'NO COINCIDE <small>' + esc(codigo) + ' no corresponde al origen registrado de GID ' + esc(gid) + '</small>';
-    $('subEtiqueta2').innerHTML = '<span class="hl-bad">Revisa que sea el sobre correcto.</span>';
-    agregarHistorialLote({ hora, gid, lotUID: '', ubicacion: '', disponible: '', obsEtq2: codigo, resultado: 'NO COINCIDE ORIGEN' });
+    $('verdictEtiqueta2').innerHTML = 'NO COINCIDE <small>LOT_UID ' + esc(lote.lotUID) + ' es del GID ' + esc(gidLote || '—') +
+      ', no del GID ' + esc(gid) + '</small>';
+    $('subEtiqueta2').innerHTML = '<span class="hl-bad">Revisa que la etiqueta del LOT_UID sea la del sobre correcto.</span>';
+    reg.resultado = 'NO COINCIDE GID';
   }
+  agregarHistorialLote(reg);
 }
 
 $('btnLimpiarLote').addEventListener('click', () => {
@@ -3838,7 +3830,7 @@ $('btnLimpiarLote').addEventListener('click', () => {
 
 $('btnExportLote').addEventListener('click', () => {
   if (!historialLote.length) { alert('No hay historial para exportar.'); return; }
-  const headers = ['Hora', 'GID escaneado', 'LOT_UID', 'Ubicación', 'Disponible', 'OBS Etiqueta 2', 'Resultado'];
+  const headers = ['Hora', 'GID escaneado', 'LOT_UID', 'Ubicación', 'Disponible', 'LOT_UID Etiqueta 2', 'Resultado'];
   const rows = [headers.join(',')];
   historialLote.forEach(h => {
     const vals = [h.hora, h.gid, h.lotUID, h.ubicacion, h.disponible, h.obsEtq2, h.resultado];
