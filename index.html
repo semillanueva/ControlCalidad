@@ -2408,7 +2408,7 @@ function parseCeldaMapaCampo(raw) {
   // ya que exige ":" tras la etiqueta. Se ve en la práctica: unas fajas del
   // mismo archivo traen "PLOT_CODE G4216 GID: 71756" (con espacio) y otras
   // "PLOT_CODEG3981 GID: 71384" (sin espacio) -- \s* cubre ambos casos.
-  const mPlotCode = text.match(/PLOT_CODE\s*(\S+?)\s+GID:\s*(\S+)/i);
+  const mPlotCode = text.match(/PLOT_CODE\s*:?\s*(\S+?)\s+GID:\s*(\S+)/i);
   if (mPlotCode) {
     return {
       plot: mPlotCode[1],
