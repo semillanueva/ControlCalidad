@@ -92,7 +92,7 @@
   .prog-tag.unknown { opacity:.55; }
 
   /* ===== Pestañas (Escaneo / Validación de listado) ===== */
-  .tab-bar { display:flex; gap:8px; margin:16px 0 10px; border-bottom:2px solid var(--line); }
+  .tab-bar { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 10px; border-bottom:2px solid var(--line); }
   .tab-btn { background:none; border:none; border-bottom:3px solid transparent; padding:9px 16px;
              font-size:.92rem; font-weight:700; color:#666; cursor:pointer; margin-bottom:-2px; }
   .tab-btn:hover { color:var(--accent); }
@@ -171,6 +171,7 @@
     <button class="tab-btn" id="tabBtnPaquete" onclick="showTab('paquete')">Verificación Envío CE&rarr;LAB</button>
     <button class="tab-btn" id="tabBtnLote" onclick="showTab('lote')">Almacenamiento LOT_UID x GID</button>
     <button class="tab-btn" id="tabBtnBulk" onclick="showTab('bulk')">Verificación Bulk</button>
+    <button class="tab-btn" id="tabBtnFortenza" onclick="showTab('fortenza')">Tratamiento Fortenza</button>
   </div>
 
   <div id="tabEscaneo" style="display:none">
@@ -628,6 +629,71 @@
     </table>
   </div>
 </div> <!-- /tabBulk -->
+<div id="tabFortenza" style="display:none">
+  <p style="font-size:.85rem;color:#666;margin:0 0 10px">
+    Control del tratamiento con Fortenza: la semilla sale del sobre original, pasa por la tratadora y se guarda en una bolsa
+    Ziploc con su propia etiqueta. Aquí se escanea el LOT_UID del sobre y el de la Ziploc para confirmar que cada semilla
+    quedó en su bolsa y que el orden no cambió durante el tratado.
+  </p>
+  <p style="font-size:.85rem;color:#666;margin:0 0 10px">
+    <b>Por pares:</b> se escanea el sobre e inmediatamente su Ziploc, uno por uno.
+    <b>Por listas:</b> primero se escanean todos los sobres en orden, luego todas las Ziploc en orden, y cada Ziploc se
+    compara contra el sobre de la misma posición.
+  </p>
+
+  <div class="conn-card">
+    <div class="toolbar" style="gap:18px">
+      <b style="font-size:.9rem">Modo:</b>
+      <label style="font-size:.9rem;cursor:pointer"><input type="radio" name="modoFortenza" value="pares" checked> Por pares (sobre &rarr; Ziploc)</label>
+      <label style="font-size:.9rem;cursor:pointer"><input type="radio" name="modoFortenza" value="listas"> Por listas (todos los sobres, luego todas las Ziploc)</label>
+    </div>
+    <div class="conn-grid" style="grid-template-columns:repeat(2,1fr);margin-top:8px">
+      <div><label>Lote / estudio (opcional, va en el Excel)</label><input type="text" id="fzNombre" autocomplete="off"></div>
+      <div><label>Responsable (opcional)</label><input type="text" id="fzResp" autocomplete="off"></div>
+    </div>
+  </div>
+
+  <div class="scan-row">
+    <div class="scan-box" id="fzBoxSobre" style="max-width:420px">
+      <label>Sobre original &mdash; LOT_UID</label>
+      <input type="text" id="fzSobre" placeholder="Escanee el sobre" autocomplete="off">
+      <div class="sub" id="fzSubSobre"></div>
+    </div>
+    <div class="scan-box" id="fzBoxZiploc" style="max-width:420px">
+      <label>Bolsa Ziploc &mdash; LOT_UID</label>
+      <input type="text" id="fzZiploc" placeholder="Primero escanee el sobre" autocomplete="off" disabled>
+      <div class="sub" id="fzSubZiploc"></div>
+    </div>
+  </div>
+
+  <div class="toolbar" id="fzBarFase" style="display:none">
+    <button class="btn-load" id="fzBtnFase">Terminar sobres &rarr; escanear Ziploc</button>
+    <span class="counts" id="fzFaseInfo"></span>
+  </div>
+
+  <div class="verdict" id="fzVerdict">Escanee el primer sobre</div>
+
+  <div class="summary" id="fzSummary">
+    <div class="box total"><span class="n" id="fzSTotal">0</span><span class="label">Sobres</span></div>
+    <div class="box ok"><span class="n" id="fzSOk">0</span><span class="label">Coinciden</span></div>
+    <div class="box warn"><span class="n" id="fzSPend">0</span><span class="label">Pendientes</span></div>
+    <div class="box bad"><span class="n" id="fzSErr">0</span><span class="label">Errores</span></div>
+  </div>
+
+  <div class="toolbar">
+    <button class="act" id="fzBtnDeshacer">Deshacer último</button>
+    <button class="act" id="fzBtnReiniciar">Reiniciar</button>
+    <button class="btn-load" id="fzBtnExcel">Descargar Excel</button>
+  </div>
+
+  <h2>Secuencia escaneada</h2>
+  <div class="table-wrap" id="fzWrap">
+    <table id="fzTable">
+      <thead><tr><th>#</th><th>LOT_UID Sobre</th><th>LOT_UID Ziploc</th><th>Resultado</th><th>Detalle</th><th>Hora</th></tr></thead>
+      <tbody><tr><td colspan="6" style="color:#888;">Aún no hay escaneos.</td></tr></tbody>
+    </table>
+  </div>
+</div> <!-- /tabFortenza -->
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -1593,6 +1659,9 @@ function showTab(tab) {
   $('tabBtnLote').classList.toggle('active', tab === 'lote');
   $('tabBulk').style.display = (tab === 'bulk') ? '' : 'none';
   $('tabBtnBulk').classList.toggle('active', tab === 'bulk');
+  $('tabFortenza').style.display = (tab === 'fortenza') ? '' : 'none';
+  $('tabBtnFortenza').classList.toggle('active', tab === 'fortenza');
+  if (tab === 'fortenza') fzFocus();
 }
 
 
@@ -4310,6 +4379,340 @@ async function detenerEscaneoBulk(manual) {
   $('btnIniciarCamaraBulk').style.display = 'inline-block';
   $('btnDetenerCamaraBulk').style.display = 'none';
 }
+
+
+/* =========================================================================
+   TRATAMIENTO FORTENZA — Sobre original vs bolsa Ziploc (mismo orden)
+   ========================================================================= */
+const fz = {
+  modo: 'pares',        // 'pares' | 'listas'
+  fase: 'sobres',       // solo en modo listas: 'sobres' | 'ziploc'
+  filas: [],            // { sobre, ziploc, estado:'ok'|'error'|'pendiente', nota, horaSobre, horaZiploc }
+  idx: 0,               // modo listas: posición que toca comparar con la siguiente Ziploc
+  sobrePendiente: null, // modo pares: { codigo, hora } esperando su Ziploc
+  hist: []              // snapshots para "Deshacer último"
+};
+
+const fzHora = () => new Date().toLocaleTimeString();
+
+function fzBeep(ok) {
+  try {
+    const ctx = fzBeep.ctx || (fzBeep.ctx = new (window.AudioContext || window.webkitAudioContext)());
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = ok ? 880 : 220;
+    o.type = ok ? 'sine' : 'square';
+    g.gain.value = 0.08;
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + (ok ? 0.12 : 0.45));
+  } catch (e) {}
+}
+
+function fzSnapshot() {
+  fz.hist.push(JSON.stringify({ filas: fz.filas, fase: fz.fase, idx: fz.idx, sobrePendiente: fz.sobrePendiente }));
+  if (fz.hist.length > 1000) fz.hist.shift();
+}
+
+function fzVeredicto(clase, titulo, detalle) {
+  $('fzVerdict').className = 'verdict' + (clase ? ' ' + clase : '');
+  $('fzVerdict').innerHTML = esc(titulo) + (detalle ? ' <small>' + detalle + '</small>' : '');
+}
+
+function fzContar() {
+  const sobres = fz.filas.filter(f => f.sobre).length;
+  const ok = fz.filas.filter(f => f.estado === 'ok').length;
+  const err = fz.filas.filter(f => f.estado === 'error').length;
+  const pend = fz.filas.filter(f => f.estado === 'pendiente').length;
+  return { sobres, ok, err, pend };
+}
+
+function fzFocus() {
+  const z = $('fzZiploc'), s = $('fzSobre');
+  setTimeout(() => { (!z.disabled ? z : s).focus(); }, 0);
+}
+
+function fzActualizarUI() {
+  const s = $('fzSobre'), z = $('fzZiploc');
+  if (fz.modo === 'pares') {
+    $('fzBarFase').style.display = 'none';
+    const esperandoZip = !!fz.sobrePendiente;
+    s.disabled = esperandoZip;
+    z.disabled = !esperandoZip;
+    $('fzBoxSobre').classList.toggle('locked', esperandoZip);
+    s.value = esperandoZip ? fz.sobrePendiente.codigo : '';
+    s.placeholder = 'Escanee el sobre';
+    z.placeholder = esperandoZip ? 'Escanee la Ziploc de este sobre' : 'Primero escanee el sobre';
+    $('fzSubSobre').innerHTML = esperandoZip ? 'Sobre leído. <span style="color:#888">(Esc en la Ziploc para cancelar)</span>' : '';
+    $('fzSubZiploc').innerHTML = esperandoZip ? 'Debe ser: <b class="mono">' + esc(fz.sobrePendiente.codigo) + '</b>' : '';
+  } else {
+    $('fzBarFase').style.display = '';
+    const enSobres = fz.fase === 'sobres';
+    s.disabled = !enSobres;
+    z.disabled = enSobres;
+    $('fzBoxSobre').classList.toggle('locked', !enSobres);
+    s.value = '';
+    s.placeholder = enSobres ? 'Escanee los sobres en orden' : 'Lista de sobres cerrada';
+    z.placeholder = enSobres ? 'Termine primero la lista de sobres' : 'Escanee las Ziploc en el mismo orden';
+    $('fzBtnFase').style.display = enSobres ? '' : 'none';
+    $('fzBtnFase').disabled = !fz.filas.length;
+    const total = fz.filas.filter(f => f.sobre).length;
+    $('fzSubSobre').innerHTML = total ? total + ' sobre(s) en la lista' : '';
+    if (enSobres) {
+      $('fzFaseInfo').textContent = 'Paso 1 de 2: escaneando sobres';
+      $('fzSubZiploc').innerHTML = '';
+    } else {
+      $('fzFaseInfo').textContent = 'Paso 2 de 2: escaneando Ziploc';
+      $('fzSubZiploc').innerHTML = fz.idx < total
+        ? 'Siguiente: posición <b>#' + (fz.idx + 1) + '</b> de ' + total + ' &mdash; se espera <b class="mono">' + esc(fz.filas[fz.idx].sobre) + '</b>'
+        : '<span class="hl-ok">Lista completa</span>';
+    }
+  }
+  const c = fzContar();
+  $('fzSTotal').textContent = c.sobres;
+  $('fzSOk').textContent = c.ok;
+  $('fzSPend').textContent = c.pend;
+  $('fzSErr').textContent = c.err;
+  fzRenderTabla();
+}
+
+function fzRenderTabla() {
+  const tb = $('fzTable').querySelector('tbody');
+  if (!fz.filas.length) {
+    tb.innerHTML = '<tr><td colspan="6" style="color:#888;">Aún no hay escaneos.</td></tr>';
+    return;
+  }
+  const tag = { ok: '<span class="tag ok">COINCIDE</span>', error: '<span class="tag bad">ERROR</span>', pendiente: '<span class="tag gray">PENDIENTE</span>' };
+  const cls = { ok: 'row-ok', error: 'row-bad', pendiente: '' };
+  tb.innerHTML = fz.filas.map((f, i) => {
+    const actual = fz.modo === 'listas' && fz.fase === 'ziploc' && i === fz.idx;
+    return '<tr class="' + cls[f.estado] + '"' + (actual ? ' id="fzFilaActual" style="outline:2px solid var(--accent)"' : '') + '>' +
+      '<td>' + (i + 1) + '</td>' +
+      '<td class="mono">' + esc(f.sobre || '—') + '</td>' +
+      '<td class="mono">' + esc(f.ziploc || '') + '</td>' +
+      '<td>' + tag[f.estado] + '</td>' +
+      '<td>' + esc(f.nota || '') + '</td>' +
+      '<td>' + esc(f.horaZiploc || f.horaSobre || '') + '</td></tr>';
+  }).join('');
+  const actual = $('fzFilaActual');
+  if (actual) actual.scrollIntoView({ block: 'nearest' });
+  else $('fzWrap').scrollTop = $('fzWrap').scrollHeight;
+}
+
+/* ---- Escaneo del sobre ---- */
+function fzProcesarSobre(codigo) {
+  const posPrev = fz.filas.findIndex(f => f.sobre === codigo);
+  if (posPrev >= 0) {
+    fzBeep(false);
+    fzVeredicto('false', 'SOBRE REPETIDO', 'El sobre <span class="mono">' + esc(codigo) + '</span> ya se escaneó en la posición #' + (posPrev + 1) + '. No se agregó.');
+    return;
+  }
+  fzSnapshot();
+  if (fz.modo === 'pares') {
+    fz.sobrePendiente = { codigo, hora: fzHora() };
+    fzVeredicto('', 'Sobre leído', 'Ahora escanee la Ziploc de <span class="mono">' + esc(codigo) + '</span>');
+  } else {
+    fz.filas.push({ sobre: codigo, ziploc: '', estado: 'pendiente', nota: '', horaSobre: fzHora(), horaZiploc: '' });
+    fzVeredicto('', 'Sobre #' + fz.filas.length + ' registrado', '<span class="mono">' + esc(codigo) + '</span>');
+  }
+  fzBeep(true);
+  fzActualizarUI();
+  fzFocus();
+}
+
+/* ---- Escaneo de la Ziploc ---- */
+function fzProcesarZiploc(codigo) {
+  const zipPrev = fz.filas.findIndex(f => f.ziploc === codigo);
+  fzSnapshot();
+
+  if (fz.modo === 'pares') {
+    const esperado = fz.sobrePendiente.codigo;
+    const ok = codigo === esperado && zipPrev < 0;
+    let nota = '';
+    if (codigo !== esperado) nota = 'La Ziploc no corresponde al sobre';
+    else if (zipPrev >= 0) nota = 'Ziploc ya escaneada en la posición #' + (zipPrev + 1);
+    fz.filas.push({ sobre: esperado, ziploc: codigo, estado: ok ? 'ok' : 'error', nota, horaSobre: fz.sobrePendiente.hora, horaZiploc: fzHora() });
+    fz.sobrePendiente = null;
+    fzBeep(ok);
+    if (ok) fzVeredicto('true', '✔ COINCIDE', 'Par #' + fz.filas.length + ' — <span class="mono">' + esc(codigo) + '</span>');
+    else fzVeredicto('false', '✖ NO COINCIDE', 'Sobre <span class="mono">' + esc(esperado) + '</span> vs Ziploc <span class="mono">' + esc(codigo) + '</span>' + (nota ? ' — ' + esc(nota) : ''));
+    fzActualizarUI();
+    fzFocus();
+    return;
+  }
+
+  // Modo listas
+  if (fz.idx >= fz.filas.length) {
+    fz.filas.push({ sobre: '', ziploc: codigo, estado: 'error', nota: 'Ziploc sobrante: ya no hay más sobres en la lista', horaSobre: '', horaZiploc: fzHora() });
+    fz.idx = fz.filas.length;
+    fzBeep(false);
+    fzVeredicto('false', '✖ ZIPLOC SOBRANTE', 'La lista de sobres ya terminó — <span class="mono">' + esc(codigo) + '</span>');
+    fzActualizarUI();
+    fzFocus();
+    return;
+  }
+
+  const pos = fz.idx;
+  const f = fz.filas[pos];
+  f.ziploc = codigo;
+  f.horaZiploc = fzHora();
+  if (codigo === f.sobre && zipPrev < 0) {
+    f.estado = 'ok'; f.nota = '';
+  } else {
+    f.estado = 'error';
+    if (zipPrev >= 0) {
+      f.nota = 'Ziploc ya escaneada en la posición #' + (zipPrev + 1);
+    } else {
+      const j = fz.filas.findIndex(x => x.sobre === codigo);
+      f.nota = j >= 0 ? 'Orden cambiado: esta Ziploc corresponde al sobre #' + (j + 1) : 'Esta Ziploc no está en la lista de sobres';
+    }
+  }
+  fz.idx++;
+  const ok = f.estado === 'ok';
+  fzBeep(ok);
+  const totalSobres = fz.filas.filter(x => x.sobre).length;
+  const fin = fz.idx >= totalSobres ? ' — Lista completa' : '';
+  if (ok) fzVeredicto('true', '✔ COINCIDE', 'Posición #' + (pos + 1) + ' — <span class="mono">' + esc(codigo) + '</span>' + fin);
+  else fzVeredicto('false', '✖ NO COINCIDE', 'Posición #' + (pos + 1) + ': se esperaba <span class="mono">' + esc(f.sobre) + '</span>, llegó <span class="mono">' + esc(codigo) + '</span> — ' + esc(f.nota) + fin);
+  fzActualizarUI();
+  fzFocus();
+}
+
+$('fzSobre').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const codigo = key($('fzSobre').value);
+  $('fzSobre').value = '';
+  if (!codigo) return;
+  fzProcesarSobre(codigo);
+});
+
+$('fzZiploc').addEventListener('keydown', e => {
+  if (e.key === 'Escape' && fz.modo === 'pares' && fz.sobrePendiente) {
+    fzSnapshot();
+    fz.sobrePendiente = null;
+    fzVeredicto('', 'Sobre cancelado', 'Escanee el siguiente sobre');
+    fzActualizarUI(); fzFocus();
+    return;
+  }
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const codigo = key($('fzZiploc').value);
+  $('fzZiploc').value = '';
+  if (!codigo) return;
+  fzProcesarZiploc(codigo);
+});
+
+$('fzBtnFase').addEventListener('click', () => {
+  if (!fz.filas.length) return;
+  if (!confirm('¿Terminar la lista con ' + fz.filas.length + ' sobre(s) y pasar a escanear las Ziploc?')) return;
+  fzSnapshot();
+  fz.fase = 'ziploc';
+  fz.idx = 0;
+  fzVeredicto('', 'Escanee la primera Ziploc', 'Debe corresponder al sobre #1');
+  fzActualizarUI();
+  fzFocus();
+});
+
+$('fzBtnDeshacer').addEventListener('click', () => {
+  if (!fz.hist.length) { alert('No hay nada que deshacer.'); return; }
+  const st = JSON.parse(fz.hist.pop());
+  fz.filas = st.filas; fz.fase = st.fase; fz.idx = st.idx; fz.sobrePendiente = st.sobrePendiente;
+  fzVeredicto('', 'Último escaneo deshecho', '');
+  fzActualizarUI();
+  fzFocus();
+});
+
+function fzReiniciar() {
+  fz.filas = []; fz.fase = 'sobres'; fz.idx = 0; fz.sobrePendiente = null; fz.hist = [];
+  fzVeredicto('', fz.modo === 'pares' ? 'Escanee el primer sobre' : 'Escanee los sobres en orden', '');
+  fzActualizarUI();
+  fzFocus();
+}
+
+$('fzBtnReiniciar').addEventListener('click', () => {
+  if ((fz.filas.length || fz.sobrePendiente) && !confirm('Se borrará todo lo escaneado en esta pestaña. ¿Continuar?')) return;
+  fzReiniciar();
+});
+
+document.querySelectorAll('input[name="modoFortenza"]').forEach(r => r.addEventListener('change', () => {
+  const nuevo = document.querySelector('input[name="modoFortenza"]:checked').value;
+  if (nuevo === fz.modo) return;
+  if ((fz.filas.length || fz.sobrePendiente) && !confirm('Cambiar de modo borra lo escaneado. ¿Continuar?')) {
+    document.querySelector('input[name="modoFortenza"][value="' + fz.modo + '"]').checked = true;
+    return;
+  }
+  fz.modo = nuevo;
+  fzReiniciar();
+}));
+
+window.addEventListener('beforeunload', e => {
+  if (fz.filas.length) { e.preventDefault(); e.returnValue = ''; }
+});
+
+/* ---- Excel con colores ---- */
+$('fzBtnExcel').addEventListener('click', async () => {
+  if (!fz.filas.length) { alert('No hay escaneos para exportar.'); return; }
+  const c = fzContar();
+  const validado = c.err === 0 && c.pend === 0 && c.ok > 0;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Control de Calidad — Semilla Nueva';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('Fortenza', { views: [{ state: 'frozen', ySplit: 8 }] });
+
+  const addInfo = (label, value) => { const r = ws.addRow([label, value]); r.getCell(1).font = { bold: true }; };
+  addInfo('Lote / estudio', norm($('fzNombre').value) || '—');
+  addInfo('Responsable', norm($('fzResp').value) || '—');
+  addInfo('Modo', fz.modo === 'pares' ? 'Por pares (sobre → Ziploc)' : 'Por listas (sobres, luego Ziploc)');
+  addInfo('Fecha de exportación', new Date().toLocaleString());
+
+  const banner = validado
+    ? '✔ TRATAMIENTO VERIFICADO — ' + c.ok + '/' + c.sobres + ' sobres coinciden con su Ziploc en orden'
+    : 'Verificación con observaciones — Coinciden: ' + c.ok + '  ·  Errores: ' + c.err + '  ·  Pendientes: ' + c.pend + '  ·  Sobres: ' + c.sobres;
+  const bRow = ws.addRow([banner]);
+  ws.mergeCells(bRow.number, 1, bRow.number, 6);
+  bRow.height = 22;
+  bRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + (validado ? '1F6F43' : (c.err ? 'B00020' : '9A6700')) } };
+  bRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+  bRow.getCell(1).alignment = { vertical: 'middle' };
+  ws.addRow([]);
+
+  const hdr = ws.addRow(['#', 'LOT_UID Sobre', 'LOT_UID Ziploc', 'Resultado', 'Detalle', 'Hora']);
+  hdr.eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F6F43' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+  });
+
+  const colores = {
+    ok:        { fondo: 'E6F4EA', texto: '137333', etiqueta: 'COINCIDE' },
+    error:     { fondo: 'FCE8E6', texto: 'B00020', etiqueta: 'ERROR' },
+    pendiente: { fondo: 'EEF0F2', texto: '5F6368', etiqueta: 'PENDIENTE' }
+  };
+  fz.filas.forEach((f, i) => {
+    const col = colores[f.estado];
+    const r = ws.addRow([i + 1, f.sobre || '—', f.ziploc || '', col.etiqueta, f.nota || '', f.horaZiploc || f.horaSobre || '']);
+    r.eachCell({ includeEmpty: true }, cell => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + col.fondo } };
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFDFE3E8' } } };
+    });
+    r.getCell(4).font = { bold: true, color: { argb: 'FF' + col.texto } };
+    r.getCell(1).alignment = { horizontal: 'center' };
+  });
+
+  ws.autoFilter = { from: { row: hdr.number, column: 1 }, to: { row: hdr.number, column: 6 } };
+  [6, 24, 24, 13, 52, 12].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const nombre = (norm($('fzNombre').value) || 'sesion').replace(/[^A-Za-z0-9_-]+/g, '_');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Fortenza_' + nombre + '_' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()) + '.xlsx';
+  a.click();
+});
+
+fzActualizarUI();
 
 </script>
 </body>
