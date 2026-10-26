@@ -2462,6 +2462,23 @@ function parseCeldaMapaCampo(raw) {
     pares[etiqueta] = m[2].trim();
   }
 
+    // Si la celda trae PLOT_CODE, ese es el código que cruza con BMS (G4850),
+  // aunque también traiga "PLOT: 250" (número de plot). Cubre:
+  // "PLOT_CODE G4216 GID:..", "PLOT_CODEG3981 GID:..",
+  // "PLOT_CODE: G4509 GID:.. ROLE:..", "PLOT_CODE: G4850 PLOT: 250 GID:..".
+  const mPlotCode = text.match(/PLOT_CODE\s*:?\s*([^\s:]+)/i);
+  if (mPlotCode) {
+    const gid = pares['gid'] || '';
+    return {
+      plot: mPlotCode[1],
+      plotNo: pares['plot no'] || pares['plot'] || '',
+      entry: pares['entry'] || '',
+      gid,
+      rol: pares['role'] || pares['rol'] || '',
+      tieneGid: !!gid
+    };
+  }
+
   const plot = pares['plot code'] || pares['plot'] || null;
   if (plot) {
     const gid = pares['gid'] || '';
@@ -2469,24 +2486,6 @@ function parseCeldaMapaCampo(raw) {
     const entry = pares['entry'] || '';
     const plotNo = pares['plot no'] || '';
     return { plot, plotNo, entry, gid, rol, tieneGid: !!gid };
-  }
-
-  // Formato "PLOT_CODE<codigo>    GID: <gid>" (algunos exports Backcross/Self
-  // no ponen ":" después de "PLOT_CODE", solo lo pegan o lo separan por un
-  // espacio del código real -- por eso el regexPar de arriba no lo detecta,
-  // ya que exige ":" tras la etiqueta. Se ve en la práctica: unas fajas del
-  // mismo archivo traen "PLOT_CODE G4216 GID: 71756" (con espacio) y otras
-  // "PLOT_CODEG3981 GID: 71384" (sin espacio) -- \s* cubre ambos casos.
-  const mPlotCode = text.match(/PLOT_CODE\s*:?\s*(\S+?)\s+GID:\s*(\S+)/i);
-  if (mPlotCode) {
-    return {
-      plot: mPlotCode[1],
-      plotNo: pares['plot no'] || '',
-      entry: pares['entry'] || '',
-      gid: mPlotCode[2],
-      rol: pares['role'] || pares['rol'] || '',
-      tieneGid: true
-    };
   }
 
   // Formato "Plot-72\nEntry 21\nRep 2" (Finca / Registro / Screening / Parent Testing)
