@@ -1235,21 +1235,35 @@ let pendingGidResolution = []; // [{obj, uuid}] -- OBS cuyo GID vino vacío y ha
 // instancias donde el parámetro no aplique).
 async function buscarEstudiosEnPrograma(crop, q, programDbId, programName) {
   const pageSize = 200;
+  const qLower = q.toLowerCase();
   let encontrados = [];
-  for (let page = 0; page < 15; page++) {
+  let totalPages = null;
+
+  for (let page = 0; page < 100; page++) { // límite de seguridad: 20,000 estudios
     let qs = '?page=' + page + '&pageSize=' + pageSize;
     if (programDbId) qs += '&programDbId=' + encodeURIComponent(programDbId);
     const r = await nativeFetch('/bmsapi/' + crop + '/brapi/v2/studies', { qs }, 'debugVivero');
     if (!r.ok) { dbg('debugVivero', '[' + (programName||'default') + '] página ' + page + ' de studies falló HTTP ' + r.status); break; }
     const d = await r.json();
     const lista = (d.result && d.result.data) || [];
-    dbg('debugVivero', '[' + (programName || 'default') + '] programDbId enviado=' + programDbId + ' -> ' + lista.length + ' estudios(s) recibidos en esta página');
+    if (totalPages == null && d.metadata && d.metadata.pagination && d.metadata.pagination.totalPages != null) {
+      totalPages = d.metadata.pagination.totalPages;
+    }
+    dbg('debugVivero', '[' + (programName || 'default') + '] página ' + page + (totalPages != null ? '/' + totalPages : '') +
+        ' -> ' + lista.length + ' estudio(s)');
     if (!lista.length) break;
-    encontrados = encontrados.concat(lista.filter(s => (s.studyName||'').toLowerCase().indexOf(q.toLowerCase()) !== -1));
+
+    // Se recorren TODAS las páginas: los ambientes de un mismo vivero
+    // pueden quedar repartidos entre páginas distintas.
+    encontrados = encontrados.concat(lista.filter(s => (s.studyName || '').toLowerCase().indexOf(qLower) !== -1));
+
     if (lista.length < pageSize) break;
-    if (encontrados.length) break; // ya encontramos algo, no seguimos paginando de más
+    if (totalPages != null && page + 1 >= totalPages) break;
   }
-    return encontrados.map(s => ({ studyDbId: s.studyDbId, studyName: s.studyName,
+
+  encontrados.sort((a, b) => String(a.studyName || '').localeCompare(String(b.studyName || ''), undefined, { numeric: true }));
+
+  return encontrados.map(s => ({ studyDbId: s.studyDbId, studyName: s.studyName,
     programDbId: programDbId || s.programDbId || s.programUUID || '',
     programName: programName || s.programName || '' }));
 }
