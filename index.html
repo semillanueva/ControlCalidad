@@ -368,7 +368,7 @@
 
 <div id="tabCampo" style="display:none">
   <p style="font-size:.85rem;color:#666;margin:0 0 10px">
-    Verificación de seguridad en laboratorio: sube el mapa de siembra (Excel) y escanea los sobres en el mismo orden del mapa para confirmar que coincide Plot/Entry(/GID) y que no falta ni se saltó ningún sobre. El mapa sale del Excel; el OBS_UNIT_ID de cada Plot se resuelve conectando a BMS por localidad.
+    Verificación de seguridad en laboratorio: sube el mapa de siembra (Excel) y escanea los sobres en el mismo orden del mapa para confirmar que coincide Plot/Entry(/GID) y que no falta ni se saltó ningún sobre. El mapa sale del Excel. Viveros (Backcross/Self) se verifican por OBS_UNIT_ID, resuelto conectando a BMS por localidad; Finca, Registro, Screening y Parent Testing se verifican por Entry, directo del Excel.
   </p>
 
   <div class="conn-card">
@@ -380,6 +380,14 @@
       <label style="font-size:.78rem; font-weight:600;">Localidad / Hoja:</label>
       <select id="localidadPickerCampo" style="padding:6px; border-radius:6px; border:1px solid var(--line);"></select>
       <button class="btn-load" id="btnCargarLocalidadCampo" style="margin-left:8px;">Cargar mapa de esta localidad</button>
+      <div style="margin-top:8px;">
+        <label style="font-size:.78rem; font-weight:600;">Verificar sobres por:</label>
+        <select id="modoVerifCampo" style="padding:6px; border-radius:6px; border:1px solid var(--line);">
+          <option value="auto">Automático (Vivero &rarr; OBS_UNIT_ID &middot; Finca/Screening/Parent Testing/Registro &rarr; Entry)</option>
+          <option value="obs">OBS_UNIT_ID (consulta BMS)</option>
+          <option value="entry">Entry (directo del Excel)</option>
+        </select>
+      </div>
     </div>
     <div class="debug-toggle" onclick="toggleDebug('debugCampo')">▸ Ver diagnóstico técnico (BMS / OBS_UNIT_ID)</div>
     <div class="debug-box" id="debugCampo"></div>
@@ -390,13 +398,14 @@
       <b>Estudio</b><span id="infoEstudioCampo">&mdash;</span>
       <b>Localidad</b><span id="infoLocalidadCampo">&mdash;</span>
       <b>Tipo</b><span id="infoTipoCampo">&mdash;</span>
+      <b>Verificación por</b><span id="infoModoCampo">&mdash;</span>
       <b>Total de Plots</b><span id="infoTotalCampo">&mdash;</span>
     </div>
   </div>
 
   <div class="scan-row">
     <div class="scan-box" style="max-width:420px">
-      <label>Escanear sobre (OBS UNIT ID)</label>
+      <label id="scanCampoLabel">Escanear sobre</label>
       <input type="text" id="scanCampo" placeholder="Carga un mapa primero" autocomplete="off" disabled>
       <div class="sub" id="subCampo"></div>
     </div>
@@ -1238,7 +1247,6 @@ async function buscarEstudiosEnPrograma(crop, q, programDbId, programName) {
   const qLower = q.toLowerCase();
   let encontrados = [];
   let totalPages = null;
-
   for (let page = 0; page < 100; page++) { // límite de seguridad: 20,000 estudios
     let qs = '?page=' + page + '&pageSize=' + pageSize;
     if (programDbId) qs += '&programDbId=' + encodeURIComponent(programDbId);
@@ -1252,17 +1260,13 @@ async function buscarEstudiosEnPrograma(crop, q, programDbId, programName) {
     dbg('debugVivero', '[' + (programName || 'default') + '] página ' + page + (totalPages != null ? '/' + totalPages : '') +
         ' -> ' + lista.length + ' estudio(s)');
     if (!lista.length) break;
-
     // Se recorren TODAS las páginas: los ambientes de un mismo vivero
     // pueden quedar repartidos entre páginas distintas.
     encontrados = encontrados.concat(lista.filter(s => (s.studyName || '').toLowerCase().indexOf(qLower) !== -1));
-
     if (lista.length < pageSize) break;
     if (totalPages != null && page + 1 >= totalPages) break;
   }
-
   encontrados.sort((a, b) => String(a.studyName || '').localeCompare(String(b.studyName || ''), undefined, { numeric: true }));
-
   return encontrados.map(s => ({ studyDbId: s.studyDbId, studyName: s.studyName,
     programDbId: programDbId || s.programDbId || s.programUUID || '',
     programName: programName || s.programName || '' }));
@@ -2453,6 +2457,39 @@ let campoPuntero = 0;
 let campoHistorial = [];
 let campoTieneGid = false;
 let campoObsIndex = new Map();  // PLOT_CODE o PLOT_NO (mayúsculas) -> [alias de OBS_UNIT_ID], para la localidad activa
+// Modo de verificación de la localidad activa:
+//   'obs'   -> Viveros (Backcross/Self): el sobre trae OBS_UNIT_ID, se resuelve vía BMS.
+//   'entry' -> Finca / Registro / Screening / Parent Testing: el sobre trae el
+//              Entry, que ya viene en el Excel -- no hace falta BMS.
+let campoModo = 'obs';
+let campoEntryIndex = new Map(); // Entry normalizado -> [registro,...] en orden de Plot (un Entry se repite por Rep)
+let campoLocActiva = null;       // para recargar si se cambia el modo con un mapa ya cargado
+
+// Normaliza un Entry para comparar: "Entry 014", "ENTRY:14", "E14", "14" -> "14".
+function normEntryCampo(s) {
+  let t = String(s == null ? '' : s).trim().toUpperCase();
+  t = t.replace(/^ENTRY\s*(NO\.?)?\s*[:#\-]?\s*/, '');
+  const m = t.match(/^[A-Z#]?\s*0*(\d+)$/);
+  if (m) return m[1];
+  return t;
+}
+
+// Lo escaneado del sobre -> Entry normalizado. Prueba primero el valor
+// completo y luego un "ENTRY <n>" dentro de una etiqueta más larga.
+function entryDesdeEscaneoCampo(codigo) {
+  const directo = normEntryCampo(codigo);
+  if (campoEntryIndex.has(directo)) return directo;
+  const m = String(codigo).toUpperCase().match(/ENTRY\s*(NO\.?)?\s*[:#\-]?\s*0*(\d+)/);
+  if (m && campoEntryIndex.has(m[2])) return m[2];
+  return directo;
+}
+
+function decidirModoCampo(loc, tieneGid) {
+  const sel = ($('modoVerifCampo') && $('modoVerifCampo').value) || 'auto';
+  if (sel === 'obs' || sel === 'entry') return sel;
+  // Automático: libro con hoja "FIELD MAP" o celdas con GID = vivero -> OBS_UNIT_ID
+  return (loc.esFieldMap || tieneGid) ? 'obs' : 'entry';
+}
 let campoGridTds = [];  // [{label, tds:[<td>|null,...]}] -- mismo layout visual del grid, en orden,
                          // para que los exportadores (Excel/PDF) sean un espejo exacto de lo que
                          // se ve en pantalla (incluyendo el estado de verificación actual) sin
@@ -2493,24 +2530,30 @@ function parseCeldaMapaCampo(raw) {
     };
   }
 
+  // Entry y Rep pueden venir SIN ":" en su propia línea aunque el Plot sí lo
+  // traiga -- formato Finca 2026: "Plot: 68\nEntry 14\nRep 2". El regex de
+  // pares solo captura "Etiqueta: valor", así que se completan por línea.
+  const lineas = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  let plotLinea = null, entryLinea = '', repLinea = '';
+  lineas.forEach(l => {
+    let mm;
+    if ((mm = l.match(/^Plot[-:\s]*(\S+)/i)) && !/^Plot\s*(No|Code)/i.test(l)) plotLinea = mm[1];
+    else if ((mm = l.match(/^Entry[:\s]*(\S+)/i))) entryLinea = mm[1];
+    else if ((mm = l.match(/^Rep[:\s]*(\S+)/i))) repLinea = mm[1];
+  });
+
   const plot = pares['plot code'] || pares['plot'] || null;
   if (plot) {
     const gid = pares['gid'] || '';
     const rol = pares['role'] || pares['rol'] || '';
-    const entry = pares['entry'] || '';
+    const entry = pares['entry'] || entryLinea || '';
+    const rep = pares['rep'] || repLinea || '';
     const plotNo = pares['plot no'] || '';
-    return { plot, plotNo, entry, gid, rol, tieneGid: !!gid };
+    return { plot, plotNo, entry, rep, gid, rol, tieneGid: !!gid };
   }
 
   // Formato "Plot-72\nEntry 21\nRep 2" (Finca / Registro / Screening / Parent Testing)
-  const lineas = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  let plot2 = null, entry2 = '';
-  lineas.forEach(l => {
-    let mm;
-    if ((mm = l.match(/^Plot[-:\s]*(\S+)/i))) plot2 = mm[1];
-    else if ((mm = l.match(/^Entry[:\s]*(\S+)/i))) entry2 = mm[1];
-  });
-  if (plot2) return { plot: plot2, plotNo: '', entry: entry2, gid: '', rol: '', tieneGid: false };
+  if (plotLinea) return { plot: plotLinea, plotNo: '', entry: entryLinea, rep: repLinea, gid: '', rol: '', tieneGid: false };
 
   return null;
 }
@@ -2574,7 +2617,9 @@ function extraerEstudioCampo(rows) {
 // dos palabras separadas por "/" o "\", o una sola de ellas.
 function esEncabezadoGridMapaCampo(v) {
   const t = String(v ?? '').trim().toLowerCase();
-  return /^(rows?|surcos?)(\s*[\\/]\s*(rows?|surcos?))?$/.test(t);
+  // Tolera letras repetidas por error de tipeo ("Surccos", visto en el
+  // mapa Finca 2026C, hoja 2_Joc_baj).
+  return /^(r+o+w+s?|s+u+r+c+o+s?)(\s*[\\/]\s*(r+o+w+s?|s+u+r+c+o+s?))?$/.test(t);
 }
 
 function parseGridMapaCampo(rows) {
@@ -2828,7 +2873,7 @@ function prepararLocalidadesCampo() {
       if (!fieldLocation) fieldLocation = extraerEtiquetaCampo(rowsSummary, 'Field Location');
       if (!estudio) estudio = extraerEstudioCampo(rowsSummary);
     }
-    campoLocalidades.push({ sheetName: nombreFieldMap, fieldLocation: fieldLocation || nombreFieldMap, estudio, rows: rowsMapa });
+    campoLocalidades.push({ sheetName: nombreFieldMap, fieldLocation: fieldLocation || nombreFieldMap, estudio, rows: rowsMapa, esFieldMap: true });
   } else {
     // Finca / Registro / Screening / Parent Testing: cada hoja es una
     // localidad distinta con su propia cuadrícula.
@@ -2839,7 +2884,7 @@ function prepararLocalidadesCampo() {
       if (!grid) return; // hoja sin estructura de mapa reconocible, se ignora
       const fieldLocation = extraerEtiquetaCampo(rows, 'Field Location') || n;
       const estudio = extraerEstudioCampo(rows);
-      campoLocalidades.push({ sheetName: n, fieldLocation, estudio, rows });
+      campoLocalidades.push({ sheetName: n, fieldLocation, estudio, rows, esFieldMap: false });
     });
   }
 
@@ -2876,12 +2921,15 @@ async function cargarMapaCampo(loc) {
   }
 
   campoMapaIndex = new Map();
+  campoEntryIndex = new Map();
   campoRegPorPlot = new Map();
   campoOrdenEsperado = [];
   campoPuntero = 0;
   campoHistorial = [];
   campoTieneGid = false;
   campoGridTds = [];
+  campoLocActiva = loc;
+  $('scanCampo').disabled = true;
   document.querySelector('#histCampoTable tbody').innerHTML = '';
 
   const wrap = $('gridWrapCampo');
@@ -2918,6 +2966,7 @@ async function cargarMapaCampo(loc) {
       td.innerHTML = 'Plot: ' + esc(parsed.plot) +
         (parsed.plotNo ? '<br>Plot No: ' + esc(parsed.plotNo) : '') +
         '<br>Entry: ' + esc(parsed.entry) +
+        (parsed.rep ? '<br>Rep: ' + esc(parsed.rep) : '') +
         (parsed.tieneGid ? '<br>GID: ' + esc(parsed.gid) : '') +
         (parsed.rol ? '<br>' + esc(parsed.rol) : '');
       td.dataset.plot = codigo;
@@ -2931,7 +2980,7 @@ async function cargarMapaCampo(loc) {
       if (registro) {
         registro.tds.push(td);
       } else {
-        registro = { plot: parsed.plot, plotNo: parsed.plotNo, entry: parsed.entry, gid: parsed.gid, rol: parsed.rol,
+        registro = { plot: parsed.plot, plotNo: parsed.plotNo, entry: parsed.entry, rep: parsed.rep || '', gid: parsed.gid, rol: parsed.rol,
                       tieneGid: parsed.tieneGid, rangeLabel: fila.label, estado: 'pendiente', tds: [td] };
         campoRegPorPlot.set(codigo, registro);
         campoOrdenEsperado.push(codigo);
@@ -2956,7 +3005,40 @@ async function cargarMapaCampo(loc) {
   $('summaryCampo').style.display = 'flex';
   actualizarContadoresCampo();
 
-  // --- Resolver OBS_UNIT_ID vía BMS antes de habilitar el escaneo ---
+  campoModo = decidirModoCampo(loc, campoTieneGid);
+  $('infoModoCampo').textContent = campoModo === 'entry' ? 'Entry (del Excel)' : 'OBS_UNIT_ID (BMS)';
+  $('scanCampoLabel').textContent = campoModo === 'entry' ? 'Escanear sobre (Entry)' : 'Escanear sobre (OBS UNIT ID)';
+
+  // --- Modo Entry (Finca / Registro / Screening / Parent Testing) ---
+  // El Entry ya viene en el Excel, así que no se consulta BMS. Un mismo
+  // Entry aparece en varios Plots (uno por Rep); el orden se sigue
+  // controlando por Plot, y el Entry escaneado se compara contra el Entry
+  // del Plot que toca.
+  if (campoModo === 'entry') {
+    let sinEntry = 0;
+    campoOrdenEsperado.forEach(codigoPlot => {
+      const registro = campoRegPorPlot.get(codigoPlot);
+      const e = normEntryCampo(registro.entry);
+      if (!e) { sinEntry++; return; }
+      if (!campoEntryIndex.has(e)) campoEntryIndex.set(e, []);
+      campoEntryIndex.get(e).push(registro);
+    });
+    if (sinEntry > 0) dbg('debugCampo', 'Advertencia: ' + sinEntry + ' plot(s) del Excel sin Entry legible.');
+    dbg('debugCampo', 'Modo Entry: ' + campoEntryIndex.size + ' entries distintos en ' + campoOrdenEsperado.length + ' plots.');
+
+    $('scanCampo').disabled = false;
+    $('scanCampo').placeholder = 'Escanee el Entry del primer sobre';
+    $('subCampo').textContent = '';
+    $('verdictCampo').className = 'verdict';
+    $('verdictCampo').textContent = 'Mapa cargado. Escanee los sobres en orden de Plot.';
+    $('fileStatusCampo').innerHTML = '<span class="hl-ok">Listo.</span> ' + (campoOrdenEsperado.length - sinEntry) + ' de ' +
+      campoOrdenEsperado.length + ' plots con Entry (' + campoEntryIndex.size + ' entries distintos).';
+    actualizarContadoresCampo();
+    $('scanCampo').focus();
+    return;
+  }
+
+  // --- Modo OBS_UNIT_ID (viveros): resolver vía BMS antes de habilitar el escaneo ---
   // (una sola localidad/ambiente a la vez, para no cruzar Plots repetidos
   // entre localidades distintas del mismo estudio)
   $('scanCampo').disabled = true;
@@ -3039,6 +3121,8 @@ $('scanCampo').addEventListener('keydown', e => {
   $('scanCampo').value = '';
   if (!codigo) return;
 
+  if (campoModo === 'entry') { escanearEntryCampo(codigo); return; }
+
   if (!campoMapaIndex.size) {
     $('subCampo').innerHTML = '<span class="hl-bad">Carga primero un mapa.</span>';
     return;
@@ -3085,6 +3169,69 @@ $('scanCampo').addEventListener('keydown', e => {
   $('scanCampo').focus();
 });
 
+// Escaneo en modo Entry (Finca / Registro / Screening / Parent Testing).
+function escanearEntryCampo(codigo) {
+  if (!campoEntryIndex.size) {
+    $('subCampo').innerHTML = '<span class="hl-bad">Carga primero un mapa.</span>';
+    return;
+  }
+
+  const entry = entryDesdeEscaneoCampo(codigo);
+  const regsEntry = campoEntryIndex.get(entry);
+  if (!regsEntry) {
+    $('verdictCampo').className = 'verdict false';
+    $('verdictCampo').innerHTML = 'NO ENCONTRADO <small>El Entry "' + esc(codigo) + '" no existe en el mapa de esta localidad</small>';
+    registrarHistorialCampo(codigo, null, 'NO ENCONTRADO');
+    actualizarContadoresCampo();
+    dbg('debugCampo', 'Escaneado "' + codigo + '" (Entry normalizado "' + entry + '") -> no está entre los ' + campoEntryIndex.size + ' entries del mapa.');
+    $('scanCampo').focus();
+    return;
+  }
+
+  const plotEsperado = campoOrdenEsperado[campoPuntero];
+  const regEsperado = plotEsperado ? campoRegPorPlot.get(plotEsperado) : null;
+
+  // Coincide con el Entry del Plot que toca -> OK y avanza.
+  if (regEsperado && regEsperado.estado !== 'ok' && normEntryCampo(regEsperado.entry) === entry) {
+    regEsperado.estado = 'ok';
+    pintarCeldaCampo(regEsperado, 'ok');
+    campoPuntero++;
+    $('verdictCampo').className = 'verdict true';
+    $('verdictCampo').innerHTML = 'OK <small>Plot ' + esc(regEsperado.plot) + ' &middot; Entry ' + esc(regEsperado.entry) +
+      (regEsperado.rep ? ' &middot; Rep ' + esc(regEsperado.rep) : '') + '</small>';
+    registrarHistorialCampo(codigo, regEsperado, 'OK');
+    actualizarContadoresCampo();
+    $('scanCampo').focus();
+    return;
+  }
+
+  // No es el que toca. Se marca el primer Plot pendiente de ese Entry.
+  const regPendiente = regsEntry.find(r => r.estado !== 'ok');
+  if (!regPendiente) {
+    $('verdictCampo').className = 'verdict false';
+    $('verdictCampo').innerHTML = 'YA ESCANEADO <small>Entry ' + esc(entry) + ' ya fue verificado en todos sus plots (' +
+      regsEntry.map(r => esc(r.plot)).join(', ') + ')</small>';
+    registrarHistorialCampo(codigo, regsEntry[0], 'DUPLICADO');
+    actualizarContadoresCampo();
+    $('scanCampo').focus();
+    return;
+  }
+
+  regPendiente.estado = 'fuera_de_orden';
+  pintarCeldaCampo(regPendiente, 'alerta');
+  $('verdictCampo').className = 'verdict false';
+  $('verdictCampo').innerHTML = 'NO COINCIDE <small>Se esperaba Entry ' + esc(regEsperado ? regEsperado.entry : '?') +
+    ' (Plot ' + esc(regEsperado ? regEsperado.plot : plotEsperado) + '), se escaneó Entry ' + esc(entry) + '</small>';
+  registrarHistorialCampo(codigo, regPendiente, 'NO COINCIDE (orden)');
+  actualizarContadoresCampo();
+  $('scanCampo').focus();
+}
+
+// Cambiar el modo con un mapa ya cargado lo vuelve a cargar con el modo nuevo.
+$('modoVerifCampo').addEventListener('change', () => {
+  if (campoLocActiva) cargarMapaCampo(campoLocActiva);
+});
+
 $('btnReiniciarCampo').addEventListener('click', () => {
   campoRegPorPlot.forEach(reg => {
     reg.estado = 'pendiente';
@@ -3125,7 +3272,7 @@ function obtenerGridExportCampo() {
       if (!td || !td.dataset.plot) return null;
       const registro = campoRegPorPlot.get(td.dataset.plot);
       if (!registro) return null;
-      return { plot: registro.plot, plotNo: registro.plotNo, entry: registro.entry, gid: registro.gid,
+      return { plot: registro.plot, plotNo: registro.plotNo, entry: registro.entry, rep: registro.rep, gid: registro.gid,
                rol: registro.rol, tieneGid: registro.tieneGid, estado: registro.estado };
     })
   }));
@@ -3136,6 +3283,7 @@ function textoCeldaCampo(c) {
   let txt = 'Plot: ' + c.plot;
   if (c.plotNo) txt += '\n' + 'Plot No: ' + c.plotNo;
   if (c.entry) txt += '\n' + 'Entry: ' + c.entry;
+  if (c.rep) txt += '\n' + 'Rep: ' + c.rep;
   if (c.tieneGid) txt += '\n' + 'GID: ' + c.gid;
   if (c.rol) txt += '\n' + c.rol;
   return txt;
