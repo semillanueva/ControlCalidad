@@ -383,9 +383,9 @@
       <div style="margin-top:8px;">
         <label style="font-size:.78rem; font-weight:600;">Verificar sobres por:</label>
         <select id="modoVerifCampo" style="padding:6px; border-radius:6px; border:1px solid var(--line);">
-          <option value="auto">Automático (Vivero &rarr; OBS_UNIT_ID &middot; Finca/Screening/Parent Testing/Registro &rarr; Entry)</option>
-          <option value="obs">OBS_UNIT_ID (consulta BMS)</option>
-          <option value="entry">Entry (directo del Excel)</option>
+          <option value="auto">Automático (Vivero &rarr; OBS_UNIT_ID &middot; Finca/Screening/Parent Testing/Registro &rarr; Entry o código de barras)</option>
+          <option value="obs">Solo OBS_UNIT_ID (consulta BMS)</option>
+          <option value="entry">Entry o código de barras (Finca/Screening/Parent Testing/Registro)</option>
         </select>
       </div>
     </div>
@@ -2793,9 +2793,11 @@ let _muestraObsUnitCampoImpresa = false; // solo diagnóstico
 // escanear sigue sin encontrar, revisa el console.log de abajo
 // ("Observation unit crudo de Campo") y compara manualmente el valor
 // contra lo impreso en un sobre real.
+let _avisoSinClaveCampo = false; // solo diagnóstico
 async function cargarObsUnitCampoBMS(studyDbId, tieneGid, programDbId) {
   const { crop } = cfg();
   campoObsIndex = new Map();
+  _avisoSinClaveCampo = false;
   let page = 0;
   const pageSize = 1000;
   while (true) {
@@ -2819,12 +2821,35 @@ async function cargarObsUnitCampoBMS(studyDbId, tieneGid, programDbId) {
       let claveCruce = '';
       try {
         const pos = rec.observationUnitPosition || {};
+        const nivel = pos.observationLevel || {};
+        // /observationunits puede mezclar PLOT y PLANT -- solo interesan los PLOT.
+        if (nivel.levelName && String(nivel.levelName).toUpperCase() !== 'PLOT') return;
         const rel = pos.observationLevelRelationships || [];
-        const campoNombre = tieneGid ? 'PLOT_CODE' : 'PLOT_NO';
-        const hit = rel.find(l => l.levelName === campoNombre);
-        if (hit) claveCruce = hit.levelCode || '';
+        const buscarNivel = nombres => {
+          const hit = rel.find(l => nombres.includes(String(l.levelName || '').toUpperCase()));
+          return hit ? String(hit.levelCode || '') : '';
+        };
+        if (tieneGid) {
+          // Viveros (Backcross/Self): cruzan por PLOT_CODE (G4850...)
+          claveCruce = buscarNivel(['PLOT_CODE']);
+        } else {
+          // Finca / Registro / Screening / Parent Testing: el número de plot
+          // viaja como levelName "PLOT" (antes se buscaba "PLOT_NO" y por
+          // eso daba 0 de 68). Se aceptan ambas y, si no, el levelCode del
+          // propio observationLevel PLOT.
+          claveCruce = buscarNivel(['PLOT', 'PLOT_NO', 'PLOT_NUMBER']) ||
+                       (String(nivel.levelName || '').toUpperCase() === 'PLOT' ? String(nivel.levelCode || '') : '');
+          claveCruce = claveCruce.replace(/^0+(?=\d)/, '');
+        }
       } catch (e) {}
-      if (!claveCruce) return;
+      if (!claveCruce) {
+        if (!_avisoSinClaveCampo) {
+          _avisoSinClaveCampo = true;
+          dbg('debugCampo', 'OBS UNIT sin número de plot reconocible. observationUnitPosition = ' +
+              JSON.stringify(rec.observationUnitPosition || {}).slice(0, 600));
+        }
+        return;
+      }
 
       const alias = [rec.observationUnitDbId, rec.observationUnitName, rec.observationUnitPUI]
         .filter(Boolean).map(String);
@@ -2905,13 +2930,62 @@ function prepararLocalidadesCampo() {
   $('fileStatusCampo').innerHTML = '<span class="hl-ok">' + campoLocalidades.length + ' localidad(es) detectada(s).</span> Elige la localidad y presiona "Cargar mapa de esta localidad".';
 }
 
-$('btnCargarLocalidadCampo').addEventListener('click', () => {
+function cargarLocalidadElegidaCampo() {
   const idx = parseInt($('localidadPickerCampo').value, 10);
   const loc = campoLocalidades[idx];
   if (!loc) return;
   $('btnCargarLocalidadCampo').disabled = true;
   cargarMapaCampo(loc).finally(() => { $('btnCargarLocalidadCampo').disabled = false; });
+}
+$('btnCargarLocalidadCampo').addEventListener('click', cargarLocalidadElegidaCampo);
+// Cambiar la localidad en la lista carga su mapa de una vez: antes había que
+// presionar "Cargar" y era fácil quedarse escaneando contra la localidad
+// anterior (se veía SACAPULAS en la lista con el mapa de El Ovejero cargado).
+$('localidadPickerCampo').addEventListener('change', () => {
+  if (campoLocActiva) cargarLocalidadElegidaCampo();
 });
+
+// Cuando un código no está en la localidad cargada, se pregunta a BMS a qué
+// ambiente pertenece ese OBS_UNIT_ID para decirle al usuario de dónde es el
+// sobre (ej. "es de SN SACAPULAS, Plot 1"). Es solo informativo.
+let campoConsultaSobreId = 0;
+async function identificarSobreOtraLocalidadCampo(codigo) {
+  if (/^\d{1,4}$/.test(codigo)) return; // parece un Entry, no un código de barras
+  const miId = ++campoConsultaSobreId;
+  try {
+    const { crop } = cfg();
+    const r = await nativeFetch('/bmsapi/' + crop + '/brapi/v2/observationunits',
+      { qs: '?observationUnitDbId=' + encodeURIComponent(codigo) + '&pageSize=5' }, 'debugCampo');
+    if (!r.ok || miId !== campoConsultaSobreId) return;
+    const d = await r.json();
+    const rec = ((d.result && d.result.data) || []).find(x =>
+      [x.observationUnitDbId, x.observationUnitName, x.observationUnitPUI].some(v => String(v || '').toUpperCase() === codigo));
+    if (!rec || miId !== campoConsultaSobreId) return;
+
+    const pos = rec.observationUnitPosition || {};
+    const rel = pos.observationLevelRelationships || [];
+    const plotRel = rel.find(l => ['PLOT', 'PLOT_NO'].includes(String(l.levelName || '').toUpperCase()));
+    const plot = plotRel ? plotRel.levelCode : (pos.observationLevel && pos.observationLevel.levelCode) || '';
+
+    let locNombre = rec.locationName || '';
+    if (!locNombre && rec.studyDbId) {
+      const rs = await nativeFetch('/bmsapi/' + crop + '/brapi/v2/studies/' + encodeURIComponent(rec.studyDbId), {}, 'debugCampo');
+      if (rs.ok) { const ds = await rs.json(); locNombre = extraerLocationNameEstudio(ds.result || ds); }
+    }
+    if (miId !== campoConsultaSobreId) return;
+
+    const enArchivo = campoLocalidades.find(l => locNombre && limpiarNombreLocalidad(l.fieldLocation) === limpiarNombreLocalidad(locNombre));
+    const detalle = 'Este sobre es de <b>' + esc(locNombre || rec.studyName || ('studyDbId ' + rec.studyDbId)) + '</b>' +
+      (plot ? ', Plot ' + esc(plot) : '') +
+      (enArchivo ? ' &mdash; cambia la Localidad a "' + esc(enArchivo.fieldLocation) + '".' : '.');
+    $('subCampo').innerHTML = '<span class="hl-bad">' + detalle + '</span>';
+    const small = document.querySelector('#verdictCampo small');
+    if (small) small.innerHTML += '<br>' + detalle;
+    dbg('debugCampo', '"' + codigo + '" pertenece a ' + (locNombre || rec.studyName || rec.studyDbId) + (plot ? ', Plot ' + plot : ''));
+  } catch (e) {
+    dbg('debugCampo', 'No se pudo identificar el sobre "' + codigo + '" en BMS: ' + (e && e.message));
+  }
+}
 
 async function cargarMapaCampo(loc) {
   const grid = parseGridMapaCampo(loc.rows);
@@ -3006,14 +3080,17 @@ async function cargarMapaCampo(loc) {
   actualizarContadoresCampo();
 
   campoModo = decidirModoCampo(loc, campoTieneGid);
-  $('infoModoCampo').textContent = campoModo === 'entry' ? 'Entry (del Excel)' : 'OBS_UNIT_ID (BMS)';
-  $('scanCampoLabel').textContent = campoModo === 'entry' ? 'Escanear sobre (Entry)' : 'Escanear sobre (OBS UNIT ID)';
+  $('infoModoCampo').textContent = campoModo === 'entry' ? 'Entry o código de barras (OBS_UNIT_ID)' : 'OBS_UNIT_ID (BMS)';
+  $('scanCampoLabel').textContent = campoModo === 'entry' ? 'Escanear sobre (código de barras o Entry)' : 'Escanear sobre (OBS UNIT ID)';
 
   // --- Modo Entry (Finca / Registro / Screening / Parent Testing) ---
-  // El Entry ya viene en el Excel, así que no se consulta BMS. Un mismo
-  // Entry aparece en varios Plots (uno por Rep); el orden se sigue
-  // controlando por Plot, y el Entry escaneado se compara contra el Entry
-  // del Plot que toca.
+  // Se acepta CUALQUIERA de los dos:
+  //   * el código de barras del sobre (OBS_UNIT_ID, se resuelve vía BMS
+  //     cruzando por número de PLOT) -> identifica el Plot exacto;
+  //   * el Entry (tecleado o escaneado) -> se compara contra el Entry del
+  //     Plot que toca (un Entry se repite por Rep).
+  // El escaneo por Entry se habilita de inmediato; BMS se carga después
+  // y, si responde, suma el reconocimiento por código de barras.
   if (campoModo === 'entry') {
     let sinEntry = 0;
     campoOrdenEsperado.forEach(codigoPlot => {
@@ -3027,44 +3104,31 @@ async function cargarMapaCampo(loc) {
     dbg('debugCampo', 'Modo Entry: ' + campoEntryIndex.size + ' entries distintos en ' + campoOrdenEsperado.length + ' plots.');
 
     $('scanCampo').disabled = false;
-    $('scanCampo').placeholder = 'Escanee el Entry del primer sobre';
+    $('scanCampo').placeholder = 'Escanee el primer sobre';
     $('subCampo').textContent = '';
     $('verdictCampo').className = 'verdict';
     $('verdictCampo').textContent = 'Mapa cargado. Escanee los sobres en orden de Plot.';
-    $('fileStatusCampo').innerHTML = '<span class="hl-ok">Listo.</span> ' + (campoOrdenEsperado.length - sinEntry) + ' de ' +
-      campoOrdenEsperado.length + ' plots con Entry (' + campoEntryIndex.size + ' entries distintos).';
+    const msgEntry = (campoOrdenEsperado.length - sinEntry) + ' de ' + campoOrdenEsperado.length +
+      ' plots con Entry (' + campoEntryIndex.size + ' entries distintos)';
+    $('fileStatusCampo').innerHTML = '<span class="hl-ok">Listo por Entry:</span> ' + msgEntry +
+      '. <span class="spinner-inline"></span> Resolviendo códigos de barras en BMS...';
     actualizarContadoresCampo();
     $('scanCampo').focus();
+
+    const locCargada = loc;
+    const sinObs = await resolverObsCampo(loc);
+    if (campoLocActiva !== locCargada) return; // se cargó otra localidad mientras tanto
+    const msgObs = sinObs == null
+      ? '<span class="hl-bad">No se pudo resolver el código de barras en BMS; solo se reconoce el Entry.</span>'
+      : (campoOrdenEsperado.length - sinObs) + ' de ' + campoOrdenEsperado.length + ' plots con código de barras (OBS UNIT) resuelto.';
+    $('fileStatusCampo').innerHTML = '<span class="hl-ok">Listo.</span> ' + msgEntry + ' &middot; ' + msgObs;
     return;
   }
 
   // --- Modo OBS_UNIT_ID (viveros): resolver vía BMS antes de habilitar el escaneo ---
-  // (una sola localidad/ambiente a la vez, para no cruzar Plots repetidos
-  // entre localidades distintas del mismo estudio)
-  $('scanCampo').disabled = true;
   $('fileStatusCampo').innerHTML = '<span class="spinner-inline"></span> Conectando a BMS para resolver OBS UNIT de esta localidad...';
-
-  const ambiente = await buscarAmbienteCampoPorLocalidad(loc.estudio, loc.fieldLocation);
-  if (!ambiente) {
-    $('fileStatusCampo').innerHTML = '<span class="hl-bad">No se encontró en BMS el ambiente para "' + esc(loc.fieldLocation) + '". Revisa el diagnóstico (debugCampo).</span>';
-    return;
-  }
-  await cargarObsUnitCampoBMS(ambiente.studyDbId, campoTieneGid, ambiente.programDbId);
-
-  // campoMapaIndex es el índice de BÚSQUEDA al escanear: cada alias de
-  // OBS_UNIT_ID (dbId / name / PUI) de un Plot apunta al MISMO objeto
-  // `registro` que ya vive en campoRegPorPlot -- así, sin importar cuál de
-  // los 3 campos traiga impreso el sobre físico, el escaneo encuentra el
-  // registro correcto y actualiza su estado una sola vez.
-  let sinObs = 0;
-  campoOrdenEsperado.forEach(codigoPlot => {
-    const registro = campoRegPorPlot.get(codigoPlot);
-    const alias = campoObsIndex.get(codigoPlot);
-    if (!alias || !alias.length) { sinObs++; return; }
-    alias.forEach(a => campoMapaIndex.set(String(a).toUpperCase(), registro));
-  });
-
-  if (sinObs > 0) dbg('debugCampo', 'Advertencia: ' + sinObs + ' plot(s) del Excel no tuvieron OBS_UNIT_ID en BMS.');
+  const sinObs = await resolverObsCampo(loc);
+  if (sinObs == null) return;
 
   $('scanCampo').disabled = false;
   $('scanCampo').placeholder = 'Escanee el primer sobre';
@@ -3074,6 +3138,46 @@ async function cargarMapaCampo(loc) {
   $('fileStatusCampo').innerHTML = '<span class="hl-ok">Listo.</span> ' + (campoOrdenEsperado.length - sinObs) + ' de ' + campoOrdenEsperado.length + ' plots con OBS UNIT resuelto.';
   actualizarContadoresCampo();
   $('scanCampo').focus();
+}
+
+// Busca el ambiente de la localidad en BMS, carga sus observationunits y
+// llena campoMapaIndex (alias de OBS_UNIT_ID -> registro del Plot).
+// Devuelve cuántos plots quedaron SIN OBS_UNIT_ID, o null si BMS falló.
+// (una sola localidad/ambiente a la vez, para no cruzar Plots repetidos
+// entre localidades distintas del mismo estudio)
+async function resolverObsCampo(loc) {
+  try {
+    const ambiente = await buscarAmbienteCampoPorLocalidad(loc.estudio, loc.fieldLocation);
+    if (!ambiente) {
+      if (campoModo !== 'entry') {
+        $('fileStatusCampo').innerHTML = '<span class="hl-bad">No se encontró en BMS el ambiente para "' + esc(loc.fieldLocation) + '". Revisa el diagnóstico (debugCampo).</span>';
+      }
+      return null;
+    }
+    dbg('debugCampo', 'Ambiente elegido para "' + loc.fieldLocation + '": studyDbId=' + ambiente.studyDbId);
+    await cargarObsUnitCampoBMS(ambiente.studyDbId, campoTieneGid, ambiente.programDbId);
+    if (campoLocActiva !== loc) return null; // el usuario cargó otra localidad mientras tanto
+
+    // Cada alias de OBS_UNIT_ID (dbId / name / PUI) de un Plot apunta al
+    // MISMO objeto `registro` de campoRegPorPlot.
+    let sinObs = 0;
+    campoOrdenEsperado.forEach(codigoPlot => {
+      const registro = campoRegPorPlot.get(codigoPlot);
+      const alias = campoObsIndex.get(codigoPlot);
+      if (!alias || !alias.length) { sinObs++; return; }
+      alias.forEach(a => campoMapaIndex.set(String(a).toUpperCase(), registro));
+    });
+    if (sinObs > 0) {
+      dbg('debugCampo', 'Advertencia: ' + sinObs + ' plot(s) del Excel no tuvieron OBS_UNIT_ID en BMS.' +
+          ' Plots del Excel (ej.): ' + campoOrdenEsperado.slice(0, 5).join(', ') +
+          ' · Plots en BMS (ej.): ' + Array.from(campoObsIndex.keys()).slice(0, 5).join(', '));
+    }
+    return sinObs;
+  } catch (err) {
+    dbg('debugCampo', 'Error resolviendo OBS UNIT en BMS: ' + (err && err.message));
+    if (campoModo !== 'entry') $('fileStatusCampo').innerHTML = '<span class="hl-bad">Error consultando BMS. Revisa el diagnóstico.</span>';
+    return null;
+  }
 }
 
 function actualizarContadoresCampo() {
@@ -3114,30 +3218,75 @@ function registrarHistorialCampo(codigo, reg, resultado) {
   tb.prepend(tr);
 }
 
-$('scanCampo').addEventListener('keydown', e => {
-  if (e.key !== 'Enter') return;
-  e.preventDefault();
-  const codigo = norm($('scanCampo').value).toUpperCase();
-  $('scanCampo').value = '';
-  if (!codigo) return;
+// Lectores que no mandan Enter: se detecta la entrada rápida (lector) con
+// un debounce. Si se teclea a mano (lento) se espera a Enter/Tab, para no
+// disparar a medias al escribir un Entry como "26".
+const CAMPO_DEBOUNCE_MS = 200;
+let campoDebounceTimer = null;
+let campoTeclas = []; // marcas de tiempo de la entrada actual
 
-  if (campoModo === 'entry') { escanearEntryCampo(codigo); return; }
+function dispararEscaneoCampo(forzado) {
+  clearTimeout(campoDebounceTimer);
+  campoDebounceTimer = null;
+  const valor = norm($('scanCampo').value);
+  if (!valor) { campoTeclas = []; return; }
+  if (!forzado) {
+    const n = campoTeclas.length;
+    const rapido = n >= 4 && (campoTeclas[n - 1] - campoTeclas[0]) / (n - 1) < 50;
+    if (!rapido) return; // tecleo manual -> esperar Enter
+  }
+  campoTeclas = [];
+  $('scanCampo').value = '';
+  procesarEscaneoCampo(valor.toUpperCase());
+  $('scanCampo').focus();
+}
+
+$('scanCampo').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== 'Tab') return;
+  e.preventDefault();
+  dispararEscaneoCampo(true);
+});
+
+$('scanCampo').addEventListener('input', () => {
+  campoTeclas.push(performance.now());
+  clearTimeout(campoDebounceTimer);
+  if (!norm($('scanCampo').value)) { campoTeclas = []; return; }
+  campoDebounceTimer = setTimeout(() => dispararEscaneoCampo(false), CAMPO_DEBOUNCE_MS);
+});
+
+function procesarEscaneoCampo(codigo) {
+  if (!codigo) return;
+  campoConsultaSobreId++;            // descarta una consulta "¿de dónde es?" anterior
+  $('subCampo').textContent = '';
+
+  if (campoModo === 'entry') {
+    // Primero como código de barras (OBS_UNIT_ID -> Plot exacto); si no, como Entry.
+    const regObs = campoMapaIndex.get(codigo);
+    if (regObs) { verificarPlotCampo(codigo, regObs); return; }
+    escanearEntryCampo(codigo);
+    return;
+  }
 
   if (!campoMapaIndex.size) {
-    $('subCampo').innerHTML = '<span class="hl-bad">Carga primero un mapa.</span>';
+    $('subCampo').innerHTML = '<span class="hl-bad">Carga primero un mapa (o BMS no resolvió ningún OBS UNIT).</span>';
     return;
   }
 
   const reg = campoMapaIndex.get(codigo);
   if (!reg) {
     $('verdictCampo').className = 'verdict false';
-    $('verdictCampo').innerHTML = 'NO ENCONTRADO <small>El código "' + esc(codigo) + '" no existe en el mapa cargado</small>';
+    $('verdictCampo').innerHTML = 'NO ENCONTRADO <small>El código "' + esc(codigo) + '" no existe en el mapa de ' + esc(campoLocActiva ? campoLocActiva.fieldLocation : 'esta localidad') + '</small>';
+    identificarSobreOtraLocalidadCampo(codigo);
     registrarHistorialCampo(codigo, null, 'NO ENCONTRADO');
     actualizarContadoresCampo();
     dbg('debugCampo', 'Escaneado "' + codigo + '" -> no coincide con ninguno de los ' + campoMapaIndex.size + ' alias de OBS_UNIT_ID cargados para esta localidad.');
     return;
   }
+  verificarPlotCampo(codigo, reg);
+}
 
+// Verifica un sobre ya identificado como un Plot exacto (por OBS_UNIT_ID).
+function verificarPlotCampo(codigo, reg) {
   if (reg.estado === 'ok') {
     $('verdictCampo').className = 'verdict false';
     $('verdictCampo').innerHTML = 'YA ESCANEADO <small>Plot ' + esc(reg.plot) + ' ya había sido verificado</small>';
@@ -3155,6 +3304,7 @@ $('scanCampo').addEventListener('keydown', e => {
     campoPuntero++;
     $('verdictCampo').className = 'verdict true';
     $('verdictCampo').innerHTML = 'OK <small>Plot ' + esc(reg.plot) + ' &middot; Entry ' + esc(reg.entry) +
+      (reg.rep ? ' &middot; Rep ' + esc(reg.rep) : '') +
       (reg.tieneGid ? ' &middot; GID ' + esc(reg.gid) : '') + (reg.rol ? ' &middot; ' + esc(reg.rol) : '') + '</small>';
     registrarHistorialCampo(codigo, reg, 'OK');
   } else {
@@ -3167,7 +3317,7 @@ $('scanCampo').addEventListener('keydown', e => {
   }
   actualizarContadoresCampo();
   $('scanCampo').focus();
-});
+}
 
 // Escaneo en modo Entry (Finca / Registro / Screening / Parent Testing).
 function escanearEntryCampo(codigo) {
@@ -3180,7 +3330,8 @@ function escanearEntryCampo(codigo) {
   const regsEntry = campoEntryIndex.get(entry);
   if (!regsEntry) {
     $('verdictCampo').className = 'verdict false';
-    $('verdictCampo').innerHTML = 'NO ENCONTRADO <small>El Entry "' + esc(codigo) + '" no existe en el mapa de esta localidad</small>';
+    $('verdictCampo').innerHTML = 'NO ENCONTRADO <small>"' + esc(codigo) + '" no es un código de barras (OBS UNIT) ni un Entry de ' + esc(campoLocActiva ? campoLocActiva.fieldLocation : 'esta localidad') + '</small>';
+    identificarSobreOtraLocalidadCampo(codigo);
     registrarHistorialCampo(codigo, null, 'NO ENCONTRADO');
     actualizarContadoresCampo();
     dbg('debugCampo', 'Escaneado "' + codigo + '" (Entry normalizado "' + entry + '") -> no está entre los ' + campoEntryIndex.size + ' entries del mapa.');
